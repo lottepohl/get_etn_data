@@ -1,0 +1,208 @@
+---
+title: "Active Receier Deployments in the Western Scheldt"
+subtitle: "receiver readout September, 2023"
+author: "Lotte Pohl"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+
+# Libraries 
+
+library(etn)
+library(dplyr)
+library(lubridate)
+library(utils)
+library(leaflet)
+library(tidyverse)
+library(knitr)
+library(leafem)
+
+# database connection
+
+con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
+
+```
+
+# Fetching all active deployments in the ws1 and ws2 projects
+
+```{r get deployments, include=T, echo=T}
+
+# get currently active deployments 
+
+current_deployments <- etn::get_acoustic_deployments(con, 
+                                                  acoustic_project_code = c("ws1", "ws2"),
+                                                  open_only = TRUE) 
+
+```
+
+# Some info about the deployments
+
+The data is a bit messy and sometimes incomplete:
+
+- Not all active deployments have both `battery_installation_date` and `battery_estimated_end_date`. 
+- Sometimes, either `battery_installation_date` or `battery_estimated_end_date` lie in the past. 
+- Sometimes, `battery_installation_date` and `battery_estimated_end_date` are the same.
+
+
+
+<!-- 1. Is there a value for `battery_estimated_end_date` (iow != NA)? -->
+
+<!-- If yes, go to 2. -->
+
+<!-- 2. Is `battery_estimated_end_date` different from `battery_installation_date`? -->
+
+<!-- If yes, go to 3. -->
+
+<!-- 3. Does `battery_estimated_end_date` lie in the past? -->
+
+<!-- If yes: colour specifically on map and in table. -->
+<!-- If no, go to 4. -->
+
+<!-- 4. Is `battery_estimated_end_date` closer than 3 months from October 1, 2023? -->
+
+<!-- If yes: Battery needs to be changed: colour red in map and table. -->
+
+<!-- 5. Is there a value for `battery_installation_date`? -->
+
+<!-- If yes, go to 5. -->
+
+<!-- 6.  -->
+
+```{r datacleaning, include=FALSE}
+
+# new column to indicate if battery needs to be changed
+
+current_deployments$needs_battery_change <- NA
+
+# algorithm to clean data
+
+# bug right now: POSIXt format is lost during 1st and 2nd check
+# current_deployments_clean <- current_deployments %>%
+#   # first check: is battery start empty, battery end not, and battery end lies in the past? -> set battery end as battery start
+#   dplyr::mutate(battery_installation_date = ifelse(
+#     is.na(battery_installation_date) & !is.na(battery_estimated_end_date) & (battery_estimated_end_date < (Sys.Date())),
+#     battery_installation_date, #battery_estimated_end_date,
+#     battery_installation_date) 
+#     ) #%>%
+#   # second check: same as first check, but then set battery end as battery start + 13 months
+#   dplyr::mutate(battery_estimated_end_date = ifelse(
+#     is.na(battery_installation_date) & !is.na(battery_estimated_end_date) & (battery_estimated_end_date < (Sys.Date() %>% as.POSIXct())),
+#     battery_installation_date + months(13),
+#     battery_estimated_end_date) 
+#     )
+
+# current_deployments_clean %>% dplyr::select(battery_installation_date) %>% unique()
+# current_deployments_clean %>% dplyr::select(battery_estimated_end_date) %>% unique()
+# current_deployments$battery_installation_date %>% unique()
+  
+  
+  
+# quick and dirty algorithm
+  
+today <- "2023-09-25" %>% as.POSIXct(tz = "CET")
+cutoff_date <- today + months(3)
+# class(today + months(3)) # check class of cutoff date
+  
+current_deployments <- current_deployments %>%
+  dplyr::mutate(needs_battery_change = ifelse(battery_estimated_end_date < cutoff_date, 
+                                              1, 
+                                              0))
+
+  
+```
+
+
+```{r receivertable, include=TRUE, echo=FALSE, fig.width = 6}
+
+knitr::kable(current_deployments %>%
+              dplyr::mutate(deploy_date_time = deploy_date_time %>% format("%Y-%m-%d"),
+                            battery_installation_date = battery_installation_date %>% format("%Y-%m-%d"),
+                            battery_estimated_end_date = battery_estimated_end_date %>% format("%Y-%m-%d")) %>%
+               dplyr::select(receiver_id, station_name, deploy_latitude, deploy_longitude,
+                             battery_installation_date, deploy_date_time, needs_battery_change),
+
+             booktabs = T, escape = F, format = "html") %>%
+
+  # kableExtra::column_spec(column = 1, width = "4cm") %>%
+
+  # kableExtra::column_spec(column = 2, width = "9cm") %>%
+
+  kableExtra::kable_styling(position = "center") #, latex_options = "HOLD_position"
+
+```
+
+When you hover over the map, the fields `battery_installation_date` and `battery_estimated_end_date` are displayed. By clicking on a receiver, the fields `station_name`, `receiver_id`, `deploy_latitude` and `deploy_longitude` are displayed.
+```{r receivermap, echo=FALSE}
+
+receiver_map <- leaflet() %>% 
+  addTiles() %>%
+  
+  # NEED BATTERY CHANGE
+  addCircleMarkers(data = current_deployments %>% dplyr::filter(needs_battery_change == 1),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 3,
+                   opacity = 0,
+                   fillOpacity = 0.7,
+                   fillColor = "red",
+                   popup = ~paste0("station: ", station_name, 
+                                   ", id: ", receiver_id,
+                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
+                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
+                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
+  ) %>%
+  
+  # DON'T NEED BATTERY CHANGE
+  addCircleMarkers(data = current_deployments %>% dplyr::filter(needs_battery_change == 0),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 3,
+                   opacity = 0,
+                   fillOpacity = 0.7,
+                   fillColor = "green",
+                   popup = ~paste0("station: ", station_name, 
+                                   ", id: ", receiver_id,
+                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
+                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
+                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
+  ) %>%
+  
+  # MISSING INFORMATION
+  addCircleMarkers(data = current_deployments %>% dplyr::filter(is.na(needs_battery_change)),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 3,
+                   opacity = 0,
+                   fillOpacity = 0.7,
+                   fillColor = "black",
+                   popup = ~paste0("station: ", station_name, 
+                                   ", id: ", receiver_id,
+                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
+                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
+                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
+  ) %>%
+  addLegend(position = "bottomleft", opacity = 1,
+            colors = c("red", "green", "black"), labels = c("battery needs change", "battery is OK", "missing information")) %>%
+  leafem::addMouseCoordinates() %>%
+  addScaleBar(position = "bottomright",
+              options = scaleBarOptions(
+                maxWidth = 150,
+              imperial = FALSE))
+
+receiver_map
+
+# stationname, receiverID, lat, long and battery end date
+  # addPolygons(data = windfarms_polygons %>% filter(!status %in% c("Approved", "Planned")),
+  #             color = "red",
+  #             weight = 2,
+  #             opacity = 1,
+  #             fillOpacity = 0.3,
+  #             label = ~paste0("status: ", status, ", country: ", country, ", year: ", year),
+  #             group = "wrecks, OWFs, cables") %>%
+
+```
+
