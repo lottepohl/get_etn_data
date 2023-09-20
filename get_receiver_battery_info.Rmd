@@ -115,25 +115,8 @@ current_deployments <- current_deployments %>%
   
 ```
 
+# Map
 
-```{r receivertable, include=TRUE, echo=FALSE, fig.width = 6}
-
-knitr::kable(current_deployments %>%
-              dplyr::mutate(deploy_date_time = deploy_date_time %>% format("%Y-%m-%d"),
-                            battery_installation_date = battery_installation_date %>% format("%Y-%m-%d"),
-                            battery_estimated_end_date = battery_estimated_end_date %>% format("%Y-%m-%d")) %>%
-               dplyr::select(receiver_id, station_name, deploy_latitude, deploy_longitude,
-                             battery_installation_date, deploy_date_time, needs_battery_change),
-
-             booktabs = T, escape = F, format = "html") %>%
-
-  # kableExtra::column_spec(column = 1, width = "4cm") %>%
-
-  # kableExtra::column_spec(column = 2, width = "9cm") %>%
-
-  kableExtra::kable_styling(position = "center") #, latex_options = "HOLD_position"
-
-```
 
 When you hover over the map, the fields `battery_installation_date` and `battery_estimated_end_date` are displayed. By clicking on a receiver, the fields `station_name`, `receiver_id`, `deploy_latitude` and `deploy_longitude` are displayed.
 ```{r receivermap, echo=FALSE}
@@ -206,3 +189,23 @@ receiver_map
 
 ```
 
+# Table
+
+```{r receivertable, include=TRUE, echo=FALSE, fig.width = 6}
+
+knitr::kable(current_deployments %>%
+              dplyr::mutate(deploy_date_time = deploy_date_time %>% format("%Y-%m-%d"),
+                            battery_installation_date = battery_installation_date %>% format("%Y-%m-%d"),
+                            battery_estimated_end_date = battery_estimated_end_date %>% format("%Y-%m-%d")) %>%
+               dplyr::select(receiver_id, station_name, deploy_latitude, deploy_longitude,
+                             battery_installation_date, battery_estimated_end_date,  deploy_date_time, needs_battery_change),
+
+             booktabs = T, escape = F, format = "html") %>%
+
+  # kableExtra::column_spec(column = 1, width = "4cm") %>%
+
+  # kableExtra::column_spec(column = 2, width = "9cm") %>%
+
+  kableExtra::kable_styling(position = "center") #, latex_options = "HOLD_position"
+
+```
