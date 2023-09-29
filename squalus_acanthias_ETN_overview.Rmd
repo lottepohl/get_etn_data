@@ -1,5 +1,5 @@
 ---
-title: "ETN receiver management"
+title: "Squalus acanthias ETN detections overview"
 output:
   flexdashboard::flex_dashboard:
     orientation: columns
@@ -116,7 +116,7 @@ stations <- detections %>% #dplyr::select(station_name, deploy_latitude, deploy_
 Column {data-width=450}
 -------------------------------------
     
-### Map with receivers
+### Map with receivers that detected S. acanthias
     
 ```{r map}
 #, include=T, echo=F
