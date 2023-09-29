@@ -39,6 +39,7 @@ library(DT) # for interactive tables
 library(ggplot2)
 library(kableExtra)
 library(plotly)
+library(scico) #colour palettes
 
 # database connection
 con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
@@ -112,10 +113,10 @@ stations <- detections %>% #dplyr::select(station_name, deploy_latitude, deploy_
 
 
 
-Column
+Column {data-width=450}
 -------------------------------------
     
-<!-- ### Map with receivers -->
+### Map with receivers
     
 ```{r map}
 #, include=T, echo=F
@@ -133,6 +134,21 @@ icon_tag <- leaflet::makeAwesomeIcon(
   markerColor = "yellow",
   library = "fa"
 )
+
+# colour palettes
+col_fun <- scico::scico(n = stations$deploy_latitude %>% unique() %>% length(),
+                        palette = "roma")
+pal <- leaflet::colorFactor(col_fun, domain = stations$deploy_latitude)
+qpal <- colorQuantile(col_fun, domain = stations$deploy_latitude, n = 5)
+palette_latitudes_df <- tibble(deploy_latitude = stations$deploy_latitude, color = pal(stations$deploy_latitude))
+
+
+legend_latitudes <- stations %>% 
+  dplyr::mutate(bin_n5 = deploy_latitude %>% dplyr::ntile(n = 5)) %>%
+  dplyr::group_by(bin_n5) %>%
+  dplyr::summarise(min = deploy_latitude %>% min(),
+                   max = deploy_latitude %>% max()) %>%
+  dplyr::mutate(color = qpal(stations$deploy_latitude) %>% unique())
 
 leaflet() %>% 
   
@@ -153,10 +169,13 @@ leaflet() %>%
                    lat = ~deploy_latitude,
                    lng = ~deploy_longitude,
                    radius = 5,
-                   fillOpacity = 0.7,
-                   fillColor = "black",
-                   opacity = 0,
+                   color = "black",
+                   weight = 1,
+                   fillOpacity = 1,
+                   fillColor = ~pal(deploy_latitude),
+                   opacity = 1,
                    label = ~paste0("station ", station_name),
+                   popup = ~paste0("lat: ", deploy_latitude, ", lon: ", deploy_longitude),
                    group = "receiver stations"
                    ) %>%
   
@@ -183,23 +202,43 @@ leaflet.extras::addFullscreenControl() %>%
                 maxWidth = 150,
               imperial = FALSE)) %>%
   
-  # layers control
+# layers control
   addLayersControl(position = "topright" ,
                    baseGroups = c("EMODnet bathymetry", "satellite", "OpenStreetMap"),
                    overlayGroups = c("receiver stations", "tagging locations"),
                    options = layersControlOptions(collapsed = FALSE)) %>%
-  hideGroup("tagging locations")
-
+  hideGroup("tagging locations") %>%
   
+# legend
+  addLegend(position = "bottomleft",
+            colors = legend_latitudes$color %>% rev(),
+            labels = paste0(legend_latitudes$min %>% round(), " - ", legend_latitudes$max %>% round()) %>% rev(),
+            opacity = 1,
+            title = "Latitude")
+
+# MWE
+
+# leaflet() %>%
+#   addTiles() %>%
+#   addCircleMarkers(data = stations,
+#                    lat = ~deploy_latitude,
+#                    lng = ~deploy_longitude,
+#                    color = ~pal2(deploy_latitude)) %>%
+#   addLegend(position = "bottomleft",
+#             colors = legend_latitudes$color,
+#             labels = paste0(legend_latitudes$min %>% round(), " - ", legend_latitudes$max %>% round()),
+#             opacity = 1,
+#             title = "Latitude")
+
 ```
   
-> Map with receiver deployments and acoustic detections.
+<!-- > Map with receiver deployments and acoustic detections. -->
  
  
-Column
+Column {data-width=650}
 -------------------------------------   
     
-<!-- ### abacus plot of detections -->
+### Monthly abacus plot of detections
     
 ```{r abacus}
 
@@ -208,7 +247,7 @@ plot_abacus_month <- ggplot() +
   geom_vline(xintercept = animals$catchedDateTime[1] %>% as.POSIXct(tz = "UTC"), 
              colour = "red", linewidth = 2) +
   geom_point(data = detections_month %>% dplyr::mutate(animal_id = animal_id %>% as.character()),
-             aes(x = date, y = animal_id, colour = deploy_longitude, size = n_detections)) + 
+             aes(x = date, y = animal_id, colour = deploy_latitude, size = n_detections)) + 
   # geom_point(data = animals %>% dplyr::mutate(idPk = idPk %>% as.character(),
   #                                             catchedDateTime = catchedDateTime %>% as.POSIXct(tz = "UTC")),
   #            aes(x = catchedDateTime, y = idPk),
@@ -219,14 +258,16 @@ plot_abacus_month <- ggplot() +
                    date_labels = "%b '%y"
                    # ,expand = c(0,0)
   ) +
+  scico::scale_color_scico(palette = "roma") +
   theme_bw()
 
-plot_abacus_month #%>% plotly::ggplotly()
+plot_abacus_month %>% plotly::ggplotly()
 
 ```
-    
-    
-<!-- ### Table with animal information -->
+
+> All individuals were tagged in late July, 2016, in Loch Etive (Scotland). 
+
+### Table with animal information
 
 ```{r table}
 
