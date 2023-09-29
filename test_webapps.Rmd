@@ -1,0 +1,44 @@
+---
+title: "test"
+subtitle: "web apps"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+
+# Libraries 
+
+library(devtools)
+# devtools::install_github("inbo/etn")
+library(etn)
+library(dplyr)
+library(lubridate)
+library(utils)
+library(leaflet)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(leafem)
+library(DT) # for interactive tables
+
+# database connection
+
+con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
+
+```
+
+```{r receiverdt, out.width="100%", include=TRUE, echo=FALSE}
+# quick button test for DM:
+
+datatable(iris,
+          extension = 'Buttons', 
+          options = list(
+          dom = 'Bfrtip',
+          buttons = c('pdf', 'csv', 'excel', 'print','copy'))) 
+
+```
+
