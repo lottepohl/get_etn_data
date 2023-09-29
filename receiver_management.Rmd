@@ -1,0 +1,133 @@
+---
+title: "ETN receiver management"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    horizontal_layout: fill
+    theme: 
+      version: 4
+      bootswatch: litera
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE, echo = F}
+
+# knitr::opts_chunk$set(echo = F)
+
+# fundamentals
+library(flexdashboard)
+library(etn)
+library(knitr)
+
+# data wrangling
+library(tidyverse)
+library(lubridate)
+
+library(dplyr)
+library(lubridate)
+library(utils)
+library(tidyverse)
+
+library(leaflet)
+library(leafem)
+
+
+# plotting and tables
+library(DT) # for interactive tables
+library(ggplot2)
+library(kableExtra)
+
+# database connection
+
+con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
+
+
+# trips_df <- read_csv('https://assets.datacamp.com/production/repositories/1448/datasets/1f12031000b09ad096880bceb61f6ca2fd95e2eb/sanfran_bikeshare_joined_oneday.csv')
+
+```
+
+
+
+```{r database query, include=FALSE}
+
+# get currently active deployments IN THE 'ws1' and 'ws2' projects
+current_deployments <- etn::get_acoustic_deployments(con,
+                                                  acoustic_project_code = c("ws1", "ws2"),
+                                                  open_only = T) # todo: change to both open and closed
+
+# make new column to indicate if battery needs change or not
+current_deployments <- current_deployments %>%
+  dplyr::mutate(needs_battery_change = NA,
+                colour = "black")
+
+today <- "2023-09-25" %>% as.POSIXct(tz = "CET")
+cutoff_date <- today + months(3)
+# class(today + months(3)) # check class of cutoff date
+
+# assess if battery needs change
+current_deployments <- current_deployments %>%
+  dplyr::mutate(needs_battery_change = ifelse(battery_estimated_end_date < cutoff_date,
+                                              1,
+                                              0),
+                colour = ifelse(needs_battery_change == 1, "#F9938E", "#90BF87")) %>%
+  dplyr::arrange(desc(needs_battery_change))
+```
+
+
+
+Row
+-------------------------------------
+    
+<!-- ### Map with receivers -->
+    
+```{r map}
+
+leaflet() %>%
+  addTiles()
+  
+```
+  
+> Map with receiver deployments. Colours indicate the time left to the estimated battery end date of the receiver.
+   
+    
+<!-- ### Overview barplot over battery end dates -->
+    
+```{r overviewBarplot}
+ggplot(data = current_deployments) +
+  geom_point(aes(x = deploy_latitude, y = deploy_longitude, colour = acoustic_project_code)) +
+  theme_bw()
+
+```
+    
+Row
+-------------------------------------    
+    
+### Table with deployment information
+
+```{r table}
+
+DT::datatable(current_deployments %>%
+              dplyr::mutate(deploy_date_time = deploy_date_time %>% format("%Y-%m-%d"),
+                            battery_installation_date = battery_installation_date %>% format("%Y-%m-%d"),
+                            battery_estimated_end_date = battery_estimated_end_date %>% format("%Y-%m-%d")) %>%
+               dplyr::select(receiver_id, needs_battery_change, station_name, deploy_latitude, deploy_longitude, 
+                             battery_installation_date, battery_estimated_end_date,  deploy_date_time, acoustic_project_code),
+              rownames = F,
+              filter = 'bottom', 
+              options = list(pageLength = 10, autoWidth = TRUE, columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              ) %>%
+  formatStyle(
+  c('receiver_id', 'battery_estimated_end_date'),
+  fontWeight = "bold") %>%
+  formatStyle(
+  'needs_battery_change',
+  backgroundColor = styleEqual(c(0, 1), c('#90BF87', '#F9938E')))
+
+```
+
+
+
+

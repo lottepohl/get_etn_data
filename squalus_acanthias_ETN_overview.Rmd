@@ -1,0 +1,200 @@
+---
+title: "ETN receiver management"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: 
+      version: 4
+      bootswatch: litera
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE, echo = F}
+
+# knitr::opts_chunk$set(echo = F)
+# Sys.setlocale("LC_TIME", "English") # language = English, does not work right now
+
+# fundamentals
+library(flexdashboard)
+library(etn)
+library(knitr)
+
+# data wrangling
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(lubridate)
+library(utils)
+library(tidyverse)
+
+# maps
+library(leaflet)
+library(leafem)
+
+# plotting and tables
+library(DT) # for interactive tables
+library(ggplot2)
+library(kableExtra)
+
+# database connection
+con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
+
+
+# trips_df <- read_csv('https://assets.datacamp.com/production/repositories/1448/datasets/1f12031000b09ad096880bceb61f6ca2fd95e2eb/sanfran_bikeshare_joined_oneday.csv')
+
+```
+
+<!-- ```{r reprexETNissue, include=F,echo=F} -->
+
+<!-- library(etn) -->
+<!-- con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd")) -->
+
+<!-- species_name <- "Squalus acanthias" -->
+
+<!-- animals <- etn::get_animals(con, scientific_name = species_name) -->
+<!-- # check contents -->
+<!-- nrow(animals) -->
+
+<!-- detections <- etn::get_acoustic_detections(scientific_name = species_name) -->
+<!-- # check contents -->
+<!-- nrow(detections) -->
+
+<!-- # amount of S. acanthias individuals detected -->
+<!-- detections$animal_id %>% unique() %>% length() -->
+
+<!-- ``` -->
+
+
+```{r database query, include=FALSE, echo=FALSE}
+
+species_name <- "Squalus acanthias"
+
+# get all animals with the species name 'squalus acanthias'
+# GIVES EMPTY DF
+# animals <- etn::get_animals(con, scientific_name = species_name)
+
+path_animals <- paste0(getwd(), "/data/Squalus_acanthias_animals.csv")
+animals <- utils::read.table(file = path_animals, 
+                            header = T,
+                            sep = ",")
+relevant_columns_animals <- c("tag", "catchedDateTime", "idPk", "utcReleaseDateTime", "scientificName", "releaseLatitude", "releaseLongitude", "sex")
+
+
+detections <- etn::get_acoustic_detections(scientific_name = species_name) 
+detections_month <- detections %>% dplyr::mutate(year = lubridate::year(date_time),
+                                                 month = lubridate::month(date_time, abbr = T),
+                                                 monthyear = paste0(month, "-", year)) %>%
+  dplyr::group_by(animal_id, station_name, monthyear) %>%
+  dplyr::summarise(n_detections = n())
+
+stations <- detections %>% #dplyr::select(station_name, deploy_latitude, deploy_longitude) %>% unique() %>%
+  group_by(station_name) %>%
+  summarise(deploy_latitude = mean(deploy_latitude),
+            deploy_longitude = mean(deploy_longitude))
+
+# deployments <- detections %>% dplyr::select(station_name, deploy_latitude, deploy_longitude, deployment_id, receiver_id) %>% unique()
+
+
+```
+
+
+
+Column
+-------------------------------------
+    
+<!-- ### Map with receivers -->
+    
+```{r map}
+
+
+# for emodnet layer
+emodnet_tiles <-"https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png"
+cite_emodnet <- "<a href='https://emodnet.ec.europa.eu'>EMODnet</a>"
+attr(cite_emodnet, "class") <- c("html", "character")
+
+
+leaflet() %>%
+  
+#background
+  # addTiles() %>%
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.6), group = "satellite") %>%
+  leaflet::addTiles(urlTemplate = emodnet_tiles,
+                    # options = leaflet::tileOptions(tms = FALSE),
+                    attribution = cite_emodnet,
+                    group = "EMODnet bathymetry") %>%
+  # addRasterImage(bathy_belgium_raster, opacity = 1, colors = "Spectral", group = "bathymetry") %>%
+  # addPolygons(data = coastline_BE_poly, opacity = 1, fillColor = "grey", weight = 0, fillOpacity = 0.7, group = "bathymetry") %>% #"#ECE4BF"
+  addTiles(group = "OpenStreetMap") %>%
+
+#data: 
+  addCircleMarkers(data = stations,
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 5,
+                   fillOpacity = 0.7,
+                   fillColor = "black",
+                   opacity = 0) %>%
+
+# add-ons
+leaflet.extras::addFullscreenControl() %>%
+  leafem::addMouseCoordinates() %>%
+  addScaleBar(position = "bottomright",
+              options = scaleBarOptions(
+                maxWidth = 150,
+              imperial = FALSE)) %>%
+  
+  # layers control
+  addLayersControl(position = "topright" ,
+                   baseGroups = c("EMODnet bathymetry", "satellite", "OpenStreetMap")) 
+
+  
+```
+  
+> Map with receiver deployments and acoustic detections.
+ 
+ 
+Column
+-------------------------------------   
+    
+<!-- ### abacus plot of detections -->
+    
+```{r overviewBarplot}
+
+
+
+ggplot(data = detections) +
+  geom_point(aes(x = date_time, y = animal_id)) + # To Do: map color to sth meaningful
+  theme_bw()
+
+```
+    
+    
+<!-- ### Table with animal information -->
+
+```{r table}
+
+DT::datatable(animals %>%
+                dplyr::select(all_of(relevant_columns_animals)),
+              rownames = F,
+              filter = 'bottom', 
+              options = list(pageLength = 10, autoWidth = TRUE, columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              ) 
+
+# %>%
+#   formatStyle(
+#   c('receiver_id', 'battery_estimated_end_date'),
+#   fontWeight = "bold") %>%
+#   formatStyle(
+#   'needs_battery_change',
+#   backgroundColor = styleEqual(c(0, 1), c('#90BF87', '#F9938E')))
+
+```
+
+
+
+

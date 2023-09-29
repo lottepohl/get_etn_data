@@ -12,6 +12,8 @@ knitr::opts_chunk$set(echo = F)
 
 # Libraries 
 
+# library(devtools)
+# devtools::install_github("inbo/etn")
 library(etn)
 library(dplyr)
 library(lubridate)
@@ -234,6 +236,18 @@ receiver_map
 # ))
 
 #final output
+# datatable(iris,
+# 
+#           extension = 'Buttons', 
+# 
+#           options = list(
+# 
+#           dom = 'Bfrtip',
+# 
+#           buttons = c('pdf', 'csv', 'excel', 'print','copy'))) #buttons option does not work...
+# 
+
+
 DT::datatable(current_deployments %>%
               dplyr::mutate(deploy_date_time = deploy_date_time %>% format("%Y-%m-%d"),
                             battery_installation_date = battery_installation_date %>% format("%Y-%m-%d"),
@@ -242,7 +256,13 @@ DT::datatable(current_deployments %>%
                              battery_installation_date, battery_estimated_end_date,  deploy_date_time, acoustic_project_code),
               rownames = F,
               filter = 'bottom', 
-              options = list(pageLength = 10, autoWidth = TRUE, columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              extension = 'Buttons',
+              options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                pageLength = 10,
+                autoWidth = TRUE, columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              # options = list(pageLength = 10, autoWidth = TRUE, columnDefs = list(list(className = 'dt-center', targets = '_all')))
               ) %>%
   formatStyle(
   c('receiver_id', 'battery_estimated_end_date'),
