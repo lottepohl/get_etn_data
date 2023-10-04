@@ -1,5 +1,5 @@
 ---
-title: "Squalus acanthias ETN detections overview"
+title: "PelFish acoustic detections overview"
 output:
   flexdashboard::flex_dashboard:
     orientation: columns
@@ -53,6 +53,8 @@ con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
 
 ```
 
+Twaite Shad
+=====================================
 
 ```{r database query, include=FALSE, echo=FALSE}
 
@@ -91,21 +93,20 @@ shads_2023 <- detections_shad %>% group_by(animal_id) %>%
 detections_shad <- detections_shad %>%
   # mutate(tagged_2023 = FALSE) %>%
   left_join(shads_2023, by = "animal_id") %>%
-  filter(tagged_2023 = TRUE)
+  filter(tagged_2023 == TRUE)
 
-detections_month_shad <- detections_shad %>% 
-  dplyr::mutate(year = lubridate::year(date_time),
-                month = lubridate::month(date_time, label = T, abbr = T),
-                month_count = lubridate::month(date_time, label = F),
-                monthyear = paste0(month, "-", year)) %>%
-  dplyr::group_by(animal_id, station_name, monthyear) %>%
-  dplyr::summarise(n_detections = n(),
-                   year = year[1],
-                   month = month[1],
-                   month_count = month_count[1],
-                   date = as.POSIXct(paste0(year, "-", month_count, "-28"), tz = "UTC"),
-                   deploy_latitude = deploy_latitude[1],
-                   deploy_longitude = deploy_longitude[1])
+# detections_month_shad <- detections_shad %>% 
+#   dplyr::mutate(year = lubridate::year(date_time),
+#                 month = lubridate::month(date_time, label = T, abbr = T),
+#                 month_count = lubridate::month(date_time, label = F),
+#                 monthyear = paste0(month, "-", year)) %>%
+#   dplyr::group_by(animal_id, station_name, monthyear) %>%
+#   dplyr::summarise(n_detections = n(),
+#                    year = year[1],
+#                    month = month[1],
+#                    month_count = month_count[1],
+#                    deploy_latitude = deploy_latitude[1],
+#                    deploy_longitude = deploy_longitude[1])
 
 
 # RECEIVER STATIONS
@@ -165,10 +166,10 @@ EEZs <- rbind(Dutch_EEZ, BPNS, French_EEZ, UK_EEZ)
 
 
 
-Column {data-width=450 .tabset}
+Column {data-width=1000 .tabset}
 -------------------------------------
     
-### Acoustic receivers
+### Map
     
 ```{r map}
 
@@ -324,12 +325,7 @@ leaflet.extras::addFullscreenControl() %>%
 > Map with receiver deployments and acoustic detections. The radius of the circles correspond to either the amount of acoustic detections or the amount of individual fish detected at a receiver station.
 
 
- 
-Column {data-width=650}
--------------------------------------   
-
-    
-### Acoustic detections {data-height=600}
+### Abacus plot
     
 ```{r abacus}
 
@@ -354,7 +350,9 @@ plot_abacus %>% plotly::ggplotly()
 ```
 
 
-### {data-height=400}
+### Tables
+
+#### Acoustic detections summary per area
 
 ```{r table}
 
@@ -372,29 +370,296 @@ DT::datatable(detections_shad_area,
               )
             )
 
-# # make table
-# table_animals <- DT::datatable(animals %>%
-#                                  dplyr::select(idPk, tagging_location, utcReleaseDateTime, sex, tag, releaseLatitude, releaseLongitude) %>%
-#                                  dplyr::rename(animal_id = idPk, release_date_time = utcReleaseDateTime, release_location = tagging_location,
-#                                                release_latitude = releaseLatitude, release_longitude = releaseLongitude),
-#               rownames = F,
-#               filter = 'bottom',
-#               extension = 'Buttons',options = list(
-#                 dom = 'Bfrtip',
-#                 buttons = c('pdf', 'csv', 'excel', 'print','copy'),
-#                 columnDefs = list(list(className = 'dt-center', targets = '_all'))
-#               )
-#             ) %>%
-#   formatStyle(
-#   c('animal_id', 'sex'),
-#   fontWeight = "bold") %>%
-#   formatStyle(
-#   'sex',
-#   backgroundColor = styleEqual(c("F", "M"), c('#FFBB81', '#89B6BD')))
+```
+
+#### Acoustic detection summary per individual
+
+```{r table2}
+
+detections_shad_individual <- detections_shad %>% group_by(animal_id, area) %>%
+  summarise(first_detection = min(date_time),
+            last_detection = max(date_time),
+            n_detections = n())
+
+DT::datatable(detections_shad_individual,
+              rownames = F,
+              # filter = 'bottom',
+              extension = 'Buttons',options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all'))
+              )
+            )
 
 
 ```
 
+
+Mackerel
+=====================================
+
+```{r databasequerymackerel, include=FALSE, echo=FALSE}
+
+mackerel <- "Scomber scombrus"
+
+# ANIMALS
+animals_mackerel <- etn::get_animals(con, scientific_name = mackerel) %>%
+  dplyr::filter(lubridate::year(release_date_time) == 2023)
+
+
+# TAGGING LOCATIONS
+tagging_locations_mackerel <- animals_mackerel %>% 
+  group_by(release_location) %>%
+  summarise(release_latitude = release_latitude[1],
+            release_longitude = release_longitude[1],
+            ind_tagged = n())
+  
+# DETECTIONS
+detections_mackerel <- etn::get_acoustic_detections(scientific_name = mackerel) %>%
+  dplyr::filter(lubridate::year(date_time) == 2023) %>%
+  dplyr::left_join(animals_mackerel %>% 
+                     dplyr::select(animal_id, release_date_time, sex), 
+                   by = "animal_id") %>%
+  dplyr::mutate(area = ifelse(acoustic_project_code %in% c("ws1", "ws2", "ws3", "zeeschelde"), acoustic_project_code, "bpns"))
+
+mackerels_2023 <- detections_mackerel %>% group_by(animal_id) %>%
+  summarise(first_detection = min(date_time)) %>%
+  dplyr::filter(first_detection > "2023-04-25" %>% as.POSIXct(tz = "utc")) %>%
+  mutate(tagged_2023 = TRUE)
+
+detections_mackerel <- detections_mackerel %>%
+  # mutate(tagged_2023 = FALSE) %>%
+  left_join(mackerels_2023, by = "animal_id") %>%
+  filter(tagged_2023 == TRUE)
+
+# detections_month_mackerel <- detections_mackerel %>% 
+#   dplyr::mutate(year = lubridate::year(date_time),
+#                 month = lubridate::month(date_time, label = T, abbr = T),
+#                 month_count = lubridate::month(date_time, label = F),
+#                 monthyear = paste0(month, "-", year)) %>%
+#   dplyr::group_by(animal_id, station_name, monthyear) %>%
+#   dplyr::summarise(n_detections = n(),
+#                    year = year[1],
+#                    month = month[1],
+#                    month_count = month_count[1],
+#                    deploy_latitude = deploy_latitude[1],
+#                    deploy_longitude = deploy_longitude[1])
+
+
+# RECEIVER STATIONS
+stations_mackerel <- detections_mackerel %>% 
+  group_by(station_name) %>%
+  summarise(deploy_latitude = mean(deploy_latitude),
+            deploy_longitude = mean(deploy_longitude),
+            n_detections = n(),
+            n_individuals = animal_id %>% unique() %>% length())
+
+# TAGS
+tags_mackerel <- etn::get_tags(acoustic_tag_id = detections_mackerel$acoustic_tag_id %>% unique())
+```
+
+
+Column {data-width=1000 .tabset}
+-------------------------------------
+    
+### Map
+    
+```{r mapmackerel}
+
+leaflet() %>% 
+  setView(3.3, 51.296, zoom = 8) %>% 
+#background
+  # addTiles() %>%
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.6), group = "satellite") %>%
+  leaflet::addTiles(urlTemplate = emodnet_tiles,
+                    # options = leaflet::tileOptions(tms = FALSE),
+                    attribution = cite_emodnet,
+                    group = "EMODnet bathymetry") %>%
+  # addRasterImage(bathy_belgium_raster, opacity = 1, colors = "Spectral", group = "bathymetry") %>%
+  # addPolygons(data = coastline_BE_poly, opacity = 1, fillColor = "grey", weight = 0, fillOpacity = 0.7, group = "bathymetry") %>% #"#ECE4BF"
+  addTiles(group = "OpenStreetMap") %>%
+  
+# EEZs
+  addPolygons(data = EEZs, color = "darkgrey", 
+              weight = 2,
+              opacity = 1.0,
+              popup = ~preferredGazetteerName,
+              fillOpacity = 0, 
+              group = "EEZs") %>%
+  
+#### area rectangles ####
+  addRectangles( #WS1
+  lng1 = 3.387, lat1 = 51.365, lng2 = 3.666, lat2 = 51.513,
+  fillOpacity = 0.2, weight = 2, color = legend_stations$colour[legend_stations$area == "ws1"], group = "receiver areas") %>%
+  addRectangles( #WS2
+  lng1 = 3.68, lat1 = 51.314, lng2 = 3.859, lat2 = 51.447,
+  fillOpacity = 0.2, weight = 2, color = legend_stations$colour[legend_stations$area == "ws2"], group = "receiver areas") %>%
+  addRectangles( #WS3
+  lng1 = 3.99, lat1 = 51.377, lng2 = 4.06, lat2 = 51.450,
+  fillOpacity = 0.2, weight = 2, color = legend_stations$colour[legend_stations$area == "ws3"], group = "receiver areas") %>%
+  addRectangles( #zeeschelde
+  lng1 = 3.889, lat1 = 50.965, lng2 = 4.510, lat2 = 51.325,
+  fillOpacity = 0.2, weight = 2, color = legend_stations$colour[legend_stations$area == "zeeschelde"], group = "receiver areas") %>%
+  addPolygons(data = BPNS, color = legend_stations$colour[legend_stations$area == "bpns"],weight = 2, fillOpacity = 0.15, group = "receiver areas") %>%
+
+# data: deployments
+    addCircleMarkers(data = receiver_stations,
+                   # clusterOptions = markerClusterOptions(showCoverageOnHover = F, zoomToBoundsOnClick = T, freezeAtZoom = 7),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 4,
+                   color = "black",
+                   weight = 1,
+                   fillOpacity = 1,
+                   fillColor = "black", #~pal(area)
+                   opacity = 1,
+                   label = ~paste0("station ", station_name, ", project: ", acoustic_project_code),
+                   popup = ~paste0("lat: ", deploy_latitude, ", lon: ", deploy_longitude),
+                   group = "receiver stations"
+                   ) %>%
+  
+#data: receiver stations with detections
+  addCircleMarkers(data = stations_mackerel,
+                   # clusterOptions = markerClusterOptions(showCoverageOnHover = F, zoomToBoundsOnClick = T, freezeAtZoom = 7),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = ~log(n_detections) * 1.5,
+                   color = "black",
+                   weight = 0.5,
+                   fillOpacity = 1,
+                   fillColor = "orange", #~pal(deploy_latitude),
+                   opacity = 1,
+                   label = ~paste0("station ", station_name, ", # detections: ", n_detections, ", # individuals: ", n_individuals),
+                   popup = ~paste0("lat: ", deploy_latitude, ", lon: ", deploy_longitude),
+                   group = "<span style=color:orange># detections</span>"
+                   ) %>%
+  
+  #data: receiver stations with # indiviuals
+  addCircleMarkers(data = stations_mackerel,
+                   # clusterOptions = markerClusterOptions(showCoverageOnHover = F, zoomToBoundsOnClick = T, freezeAtZoom = 7),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = ~log(n_individuals) * 4,
+                   color = "black",
+                   weight = 0.5,
+                   fillOpacity = 1,
+                   fillColor = "purple", #~pal(deploy_latitude),
+                   opacity = 1,
+                   label = ~paste0("station ", station_name, ", # detections: ", n_detections, ", # individuals: ", n_individuals),
+                   popup = ~paste0("lat: ", deploy_latitude, ", lon: ", deploy_longitude),
+                   group = "<span style=color:purple># individuals</span>"
+                   ) %>%
+  
+#data: tagging locations
+  addAwesomeMarkers(data = tagging_locations_mackerel,
+                   icon = icon_tag,
+                   lat = ~release_latitude,
+                   lng = ~release_longitude,
+                   label = ~paste0("name: ", release_location),
+                   popup = ~paste0("lat: ", release_latitude, ", lon: ", release_longitude, ", #fish tagged: ", ind_tagged),
+                   group = "tagging locations"
+                   ) %>%
+
+# add-ons
+leaflet.extras::addFullscreenControl() %>%
+  leafem::addMouseCoordinates() %>%
+  addScaleBar(position = "bottomright",
+              options = scaleBarOptions(
+                maxWidth = 150,
+              imperial = FALSE)) %>%
+  
+# layers control
+  addLayersControl(position = "topright" ,
+                   baseGroups = c("OpenStreetMap", "EMODnet bathymetry", "satellite"),
+                   overlayGroups = c("<span style=color:orange># detections</span>", "<span style=color:purple># individuals</span>","tagging locations", "receiver areas"), # "receiver stations",
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  hideGroup(c("tagging locations", "<span style=color:orange># detections</span>")) %>%
+  
+# legend
+  addLegend(position = "bottomleft",
+            labels = legend_stations$area,
+            colors = legend_stations$colour,
+            opacity = 1,
+            title = "Receiver area")
+
+```
+  
+> Map with receiver deployments and acoustic detections. The radius of the circles correspond to either the amount of acoustic detections or the amount of individual fish detected at a receiver station.
+
+
+### Abacus plot
+    
+```{r abacusmackerel}
+
+plot_abacus <- ggplot() +
+  geom_point(data = animals_mackerel %>%
+               dplyr::filter(animal_id %in% detections_mackerel$animal_id) %>%
+               dplyr::mutate(animal_id = animal_id %>% as.character()),
+             aes(x = release_date_time, y = animal_id), shape = 4, size = 4, colour = "black") +
+  geom_point(data = detections_mackerel %>%
+               dplyr::mutate(animal_id = animal_id %>% 
+                               as.character(),
+                             area = area %>% as.factor()),
+             aes(x = date_time, y = animal_id, colour = area)) + 
+  labs(x = "date", y = "animal id", colour = "area") +
+  scale_x_datetime(date_breaks = "1 week",
+                   # date_minor_breaks = "2 weeks",
+                   date_labels = "%b '%y"
+                   # ,expand = c(0,0)
+  ) +
+  # scico::scale_color_scico(palette = "roma") +
+  scale_color_manual(values = legend_stations %>% dplyr::filter(area %in% (detections_mackerel$area %>% unique())) %>% dplyr::select(colour) %>% pull()) + 
+  theme_bw()
+
+plot_abacus %>% plotly::ggplotly()
+
+```
+
+> Detections of individuals represented as dots. The crosses mark the tagging dates
+
+### Tables
+
+#### Acoustic detections summary per area
+
+```{r tablemackerel}
+
+detections_mackerel_area <- detections_mackerel %>% group_by(area) %>% 
+  dplyr::summarise(n_detections = n(),
+                   n_individuals = animal_id %>% unique() %>% length())
+
+DT::datatable(detections_mackerel_area,
+              rownames = F,
+              # filter = 'bottom',
+              extension = 'Buttons',options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all'))
+              )
+            )
+
+```
+
+#### Acoustic detection summary per individual
+
+```{r table2mackerel}
+
+detections_mackerel_individual <- detections_mackerel %>% group_by(animal_id, area) %>%
+  summarise(first_detection = min(date_time),
+            last_detection = max(date_time),
+            n_detections = n())
+
+DT::datatable(detections_mackerel_individual,
+              rownames = F,
+              # filter = 'bottom',
+              extension = 'Buttons',options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all'))
+              )
+            )
+
+
+```
 
 
 
