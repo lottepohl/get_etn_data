@@ -16,6 +16,7 @@ editor_options:
 ```{r setup, include=FALSE, echo = F}
 
 # knitr::opts_chunk$set(echo = F)
+# Sys.setlocale("LC_TIME", "English") # language = English, does not work right now
 
 # fundamentals
 library(flexdashboard)
@@ -23,29 +24,28 @@ library(etn)
 library(knitr)
 
 # data wrangling
+library(readr)
 library(tidyverse)
 library(lubridate)
-
 library(dplyr)
 library(lubridate)
 library(utils)
 library(tidyverse)
 
+# maps
 library(leaflet)
 library(leafem)
-
 
 # plotting and tables
 library(DT) # for interactive tables
 library(ggplot2)
 library(kableExtra)
+library(plotly)
+library(scico) #colour palettes
 
 # database connection
-
 con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
 
-
-# trips_df <- read_csv('https://assets.datacamp.com/production/repositories/1448/datasets/1f12031000b09ad096880bceb61f6ca2fd95e2eb/sanfran_bikeshare_joined_oneday.csv')
 
 ```
 
@@ -81,31 +81,108 @@ current_deployments <- current_deployments %>%
 Row
 -------------------------------------
     
-<!-- ### Map with receivers -->
+### Receiver position and status
     
 ```{r map}
 
-leaflet() %>%
-  addTiles()
-  
-```
-  
-> Map with receiver deployments. Colours indicate the time left to the estimated battery end date of the receiver.
-   
-    
-<!-- ### Overview barplot over battery end dates -->
-    
-```{r overviewBarplot}
-ggplot(data = current_deployments) +
-  geom_point(aes(x = deploy_latitude, y = deploy_longitude, colour = acoustic_project_code)) +
-  theme_bw()
+# EMODnet Bathymetry layer
+emodnet_tiles <-"https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png"
+cite_emodnet <- "<a href='https://emodnet.ec.europa.eu'>EMODnet</a>"
+attr(cite_emodnet, "class") <- c("html", "character")
 
+
+receiver_map <- leaflet(leafletOptions(minZoom = 11)) %>% 
+  #background
+  addTiles(group = "OpenStreetMap") %>%
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.6), group = "satellite") %>%
+  leaflet::addTiles(urlTemplate = emodnet_tiles,
+                    # options = leaflet::tileOptions(tms = FALSE),
+                    attribution = cite_emodnet,
+                    group = "EMODnet bathymetry") %>%
+  # addRasterImage(bathy_belgium_raster, opacity = 1, colors = "Spectral", group = "bathymetry") %>%
+  # addPolygons(data = coastline_BE_poly, opacity = 1, fillColor = "grey", weight = 0, fillOpacity = 0.7, group = "bathymetry") %>% #"#ECE4BF"
+  
+  # NEED BATTERY CHANGE
+  addCircleMarkers(data = current_deployments %>% dplyr::filter(needs_battery_change == 1),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 5,
+                   opacity = 0,
+                   fillOpacity = 0.7,
+                   fillColor = "red",
+                   popup = ~paste0("station: ", station_name, 
+                                   ", id: ", receiver_id,
+                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
+                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
+                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
+  ) %>%
+  
+  # DON'T NEED BATTERY CHANGE
+  addCircleMarkers(data = current_deployments %>% dplyr::filter(needs_battery_change == 0),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 5,
+                   opacity = 0,
+                   fillOpacity = 0.7,
+                   fillColor = "green",
+                   popup = ~paste0("station: ", station_name, 
+                                   ", id: ", receiver_id,
+                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
+                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
+                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
+  ) %>%
+  
+  # MISSING INFORMATION
+  addCircleMarkers(data = current_deployments %>% dplyr::filter(is.na(needs_battery_change)),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = 5,
+                   opacity = 0,
+                   fillOpacity = 0.7,
+                   fillColor = "black",
+                   popup = ~paste0("station: ", station_name, 
+                                   ", id: ", receiver_id,
+                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
+                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
+                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
+  ) %>%
+  
+  # LEGEND
+  addLegend(position = "bottomleft", opacity = 1,
+            colors = c("red", "green", "black"), labels = c("battery needs change", "battery is OK", "missing information")) %>%
+
+  
+  # add-ons
+leaflet.extras::addFullscreenControl() %>%
+  leafem::addMouseCoordinates() %>%
+  addScaleBar(position = "bottomright",
+              options = scaleBarOptions(
+                maxWidth = 150,
+              imperial = FALSE)) %>%
+
+  
+  # layers control
+  addLayersControl(position = "topright" ,
+                   baseGroups = c("OpenStreetMap", "EMODnet bathymetry", "satellite"),
+                   # overlayGroups = c("receiver stations", "tagging locations"),
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  hideGroup("tagging locations")
+
+
+receiver_map
+  
 ```
-    
+
+> When you hover over the map, the fields `battery_installation_date` and `battery_estimated_end_date` are displayed. 
+  By clicking on a receiver, the fields `station_name`, `receiver_id`, `deploy_latitude` and `deploy_longitude` are displayed.
+
+<!-- > Map with receiver deployments. Colours indicate the time left to the estimated battery end date of the receiver. -->
+
+
 Row
 -------------------------------------    
     
-### Table with deployment information
+### Receiver deployment info
 
 ```{r table}
 
@@ -116,8 +193,13 @@ DT::datatable(current_deployments %>%
                dplyr::select(receiver_id, needs_battery_change, station_name, deploy_latitude, deploy_longitude, 
                              battery_installation_date, battery_estimated_end_date,  deploy_date_time, acoustic_project_code),
               rownames = F,
-              filter = 'bottom', 
-              options = list(pageLength = 10, autoWidth = TRUE, columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              filter = 'top',
+              extension = 'Buttons',
+              options = list(
+                pageLength = 50, # autoWidth = TRUE,
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all')))
               ) %>%
   formatStyle(
   c('receiver_id', 'battery_estimated_end_date'),
@@ -125,6 +207,25 @@ DT::datatable(current_deployments %>%
   formatStyle(
   'needs_battery_change',
   backgroundColor = styleEqual(c(0, 1), c('#90BF87', '#F9938E')))
+
+# table_animals <- 
+#   DT::datatable(animals %>% 
+#                   dplyr::select(idPk, utcReleaseDateTime, sex, tag, releaseLatitude, releaseLongitude) %>%
+#                   dplyr::rename(animal_id = idPk, release_date_time = utcReleaseDateTime,  release_latitude = releaseLatitude, release_longitude = releaseLongitude), #release_location = tagging_location,
+#               rownames = F,
+#               filter = 'bottom',
+#               extension = 'Buttons',options = list(
+#                 dom = 'Bfrtip',
+#                 buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+#                 columnDefs = list(list(className = 'dt-center', targets = '_all'))
+#               )
+#             ) %>%
+#   formatStyle(
+#   c('animal_id', 'sex'),
+#   fontWeight = "bold") %>%
+#   formatStyle(
+#   'sex',
+#   backgroundColor = styleEqual(c("F", "M"), c('#FFBB81', '#89B6BD')))
 
 ```
 

@@ -1,44 +1,135 @@
 ---
-title: "test"
-subtitle: "web apps"
-output: html_document
-editor_options: 
-  chunk_output_type: console
+
+title: "Bike Shares Daily"
+
+output: 
+
+  flexdashboard::flex_dashboard:
+
+    orientation: columns
+
+    vertical_layout: fill
+
 ---
 
 
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F)
 
-# Libraries 
+library(flexdashboard)
 
-library(devtools)
-# devtools::install_github("inbo/etn")
-library(etn)
-library(dplyr)
-library(lubridate)
-library(utils)
-library(leaflet)
+library(readr)
+
 library(tidyverse)
-library(knitr)
-library(kableExtra)
-library(leafem)
-library(DT) # for interactive tables
 
-# database connection
+library(lubridate)
 
-con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
+library(plotly)
 
-```
 
-```{r receiverdt, out.width="100%", include=TRUE, echo=FALSE}
-# quick button test for DM:
 
-datatable(iris,
-          extension = 'Buttons', 
-          options = list(
-          dom = 'Bfrtip',
-          buttons = c('pdf', 'csv', 'excel', 'print','copy'))) 
+trips_df <- read_csv('https://assets.datacamp.com/production/course_6355/datasets/sanfran_bikeshare_joined_oneday.csv')
 
 ```
 
+
+
+Overview
+
+====================================================
+
+
+
+Column {data-width=650}
+
+-----------------------------------------------------------------------
+
+
+
+### Origins
+
+
+
+
+
+Column {data-width=350}
+
+-----------------------------------------------------------------------
+
+
+
+### Median Trip Length
+
+
+
+```{r}
+
+
+
+median_min <- median(trips_df$duration_sec / 60) %>% round(digits = 1)
+
+
+
+valueBox(median_min, 
+
+         caption = 'Median Trip Duration (Minutes)', 
+
+         icon = 'fa-clock-o',
+
+         href = '#trip-duration'
+
+)
+
+
+
+
+
+```
+
+
+
+### % Short Trips
+
+
+
+
+
+### Trips by Start Time
+
+
+
+
+
+Trip Duration
+
+====================================================
+
+
+
+### Trip Durations
+
+
+
+```{r}
+
+
+
+duration_plot <- trips_df %>%
+
+  mutate(`Trip Duration (min)` = duration_sec / 60) %>%
+
+  ggplot(aes(x = `Trip Duration (min)`)) +
+
+  theme_bw() +
+
+  geom_histogram(binwidth = 1) +
+
+  ylab('# Trips')
+
+
+
+duration_plot %>% ggplotly()
+
+
+
+```
