@@ -1,6 +1,6 @@
 ---
 title: "Cod depth distribution"
-subtitle: "diurnal patterns, class I, II and III"
+subtitle: "diurnal patterns, class I, II and above"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -114,3 +114,61 @@ p_hist_age_groups <-
 p_hist_age_groups
 ```
 There are no individuals in age group 3, and `r animals_cod_depth%>% filter(age_group == 4) %>% nrow()` animal in group 4 (total length = `r animals_cod_depth%>% filter(age_group == 4) %>% select(length1) %>% pull()` cm).
+
+
+```{r depthvals, include=F, echo=F}
+
+detections_cod_depth <- detections_cod %>%
+  left_join(animals_cod_depth %>% 
+              dplyr::select(tag_serial_number, sensor_slope, sensor_intercept),
+            by = join_by(tag_serial_number)) %>%
+  dplyr::mutate(depth_m = (sensor_value * sensor_slope) + sensor_intercept)
+
+detections_cod_depth %>% head() %>% View()
+
+p_hist_depth <- 
+  ggplot(data = detections_cod_depth) +
+  geom_histogram(aes(x = depth_m)) + 
+  labs(x = "depth in m", y = "number of detections", title = "Depth distribution of detections") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_bw()
+
+p_hist_depth
+
+# some of the detections have negative depth values. that cannot be. let's investigate why that is
+
+tags_weird_depths <- 
+  tags_cod %>%
+  dplyr::filter(tag_serial_number %in% (detections_cod_depth %>% 
+                     dplyr::filter(depth_m < 0) %>%
+                     dplyr::select(tag_serial_number) %>% 
+                     unique() %>% pull()))
+
+tags_weird_depths %>% View()
+
+# see which tags give depth values <0
+tags_cod %>% 
+  dplyr::filter(tag_serial_number %in% (tags_weird_depths %>% pull())) %>%
+  View()
+
+# see what animals have sensor slope = 0
+animals_cod_depth %>% 
+  dplyr::filter(sensor_slope == 0)  %>%
+  View()
+
+# lets see what the detected depths of the sensors with slope = 0.15 look like
+p_hist_depth_smallslope <- 
+  ggplot(data = detections_cod_depth %>%
+           dplyr::filter(tag_serial_number %in% (tags_weird_depths %>% 
+                                                   dplyr::filter(sensor_slope != 0) %>% 
+                                                   dplyr::select(tag_serial_number) %>% 
+                                                   pull()))) +
+  geom_histogram(aes(x = depth_m)) + 
+  labs(x = "depth in m", y = "number of detections", title = "Depth distribution of detections") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_bw()
+
+p_hist_depth_smallslope
+
+```
+
