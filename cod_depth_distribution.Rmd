@@ -1,0 +1,116 @@
+---
+title: "Cod depth distribution"
+subtitle: "diurnal patterns, class I, II and III"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Libraries 
+
+# library(devtools)
+# devtools::install_github("inbo/etn")
+library(etn)
+library(dplyr)
+library(lubridate)
+library(utils)
+library(leaflet)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(leafem)
+library(DT) # for interactive tables
+
+# database connection
+
+con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
+
+# function to clean ETN tables
+remove_double_cols <- function(animals){
+  animals$tag_serial_number <- gsub(",.*","", animals$tag_serial_number)
+  animals$tag_type <- gsub(",.*","", animals$tag_type)
+  animals$tag_subtype <- gsub(",.*","", animals$tag_subtype)
+  animals$acoustic_tag_id <- gsub(",.*","", animals$acoustic_tag_id)
+  return(animals)
+}
+
+```
+
+```{r dataquery, include=F, echo=F}
+
+# PROJECTS
+project_codes <- c("rijke_noordzee", "PC4C", "2015_PHD_verhelst_cod", "2010_PHD_Reubens", "codnoise")
+
+cod_projects <- etn::get_animal_projects(animal_project_code = project_codes)
+# cod_projects %>% View()
+
+
+# ANIMALS
+animals_cod <- etn::get_animals(animal_project_code = project_codes) %>%
+  remove_double_cols()
+
+
+# TAG INFORMATION
+tags_cod <- etn::get_tags(acoustic_tag_id = animals_cod$acoustic_tag_id)
+tags_relevant_cols <- c("tag_serial_number", "sensor_type", "manufacturer", "model", "frequency", "status", "battery_estimated_life", "activation_date", "battery_estimated_end_date", "sensor_slope", "sensor_intercept", "sensor_range", "sensor_unit", "sensor_transmit_ratio", "accelerometer_algorithm", "sensor_transmit_ratio", "owner_pi", "step1_min_delay", "step1_max_delay", "step1_duration", "step1_acceleration_duration")
+# "acoustic_tag_id", "tag_type", "acoustic_tag_id_alternative",
+
+# only keep the animals for which we have depth sensor information
+animals_cod_depth <- animals_cod %>%
+  dplyr::left_join(tags_cod %>% 
+                     dplyr::select(all_of(tags_relevant_cols)),
+                   by = "tag_serial_number") %>%
+  dplyr::filter(sensor_type %in% c("P", "pressure")) %>% # only retain sensor types "P"/"pressure"
+  dplyr::filter(length1 > 19.9) %>% #separate into age classes, from Reubens et al., 2013 (Mar. Env. Res.)
+  dplyr::mutate(age_group = ifelse(length1 < 43.3, 1, 
+                                   ifelse(length1 < 54.6, 2, 
+                                          ifelse(length1 < 61.2, 3,
+                                                 4))) %>%
+                  factor(levels = c(1, 2, 3, 4))) # age class 4 is categorized as all cod longer than 61.2 cm
+
+
+# making sure there really are no cods in group III
+# animals_cod_depth %>% 
+#   dplyr::filter(length1 %>% between(54.6, 61.2)) %>% 
+#   View()
+
+# animals_cod_depth$sensor_type %>% unique()
+# animals_cod_depth$animal_project_code %>% unique()
+
+#both are 60
+# animals_cod_depth$acoustic_tag_id %>% unique() %>% length() 
+# animals_cod_depth$tag_serial_number %>% unique() %>% length()
+
+# DETECTIONS
+detections_cod <- etn::get_acoustic_detections(
+  acoustic_tag_id = animals_cod_depth$acoustic_tag_id %>% unique())
+
+# detections_cod$tag_serial_number %>% unique() %>% length()
+# detections_cod$date_time %>% min()
+# detections_cod$date_time %>% max()
+
+```
+
+# General Information
+
+* `r animals_cod %>% nrow()` tagged cod found for the projects codes `r project_codes`.
+
+* `r animals_cod_depth %>% nrow()` were equipped with a depth sensor, out of which `r detections_cod$tag_serial_number %>% unique() %>% length()` were detected by acoustic receivers.
+
+<!-- * `r animals_cod$acoustic_tag_id %>% unique() %>% length()` unique acoustic tag ids are in the cod data, and no NAs. To me that looks like some acoustic tag ids are double, just fyi. -->
+
+```{r histAgeGroups}
+p_hist_age_groups <- 
+  ggplot(data = animals_cod_depth) +
+  geom_histogram(aes(x = age_group), stat="count") + 
+  labs(x = "age group", y = "number of individuals", title = "Age class distribution") +
+  scale_y_continuous(expand = c(0,0)) +
+  theme_bw()
+
+p_hist_age_groups
+```
+There are no individuals in age group 3, and `r animals_cod_depth%>% filter(age_group == 4) %>% nrow()` animal in group 4 (total length = `r animals_cod_depth%>% filter(age_group == 4) %>% select(length1) %>% pull()` cm).
