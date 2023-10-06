@@ -122,9 +122,18 @@ detections_cod_depth <- detections_cod %>%
   left_join(animals_cod_depth %>% 
               dplyr::select(tag_serial_number, sensor_slope, sensor_intercept),
             by = join_by(tag_serial_number)) %>%
-  dplyr::mutate(depth_m = (sensor_value * sensor_slope) + sensor_intercept)
-
-detections_cod_depth %>% head() %>% View()
+  dplyr::mutate(depth_m = (sensor_value * sensor_slope) + sensor_intercept) %>% #calc depth
+  dplyr::filter(depth_m > 0) %>% #filter out weird depths(i.e., depths < 0)
+  # some stats
+  dplyr::mutate(hour_of_day = lubridate::hour(date_time) %>% as.factor(),
+                year = lubridate::year(date_time),
+                month = lubridate::month(date_time, label = T, abbr = T),
+                month_count = lubridate::month(date_time, label = F),
+                monthyear = paste0(month, "-", year),
+                day_of_year = yday(date_time))
+  
+rm(detections_cod)
+# detections_cod_depth %>% head() %>% View()
 
 p_hist_depth <- 
   ggplot(data = detections_cod_depth) +
@@ -144,31 +153,114 @@ tags_weird_depths <-
                      dplyr::select(tag_serial_number) %>% 
                      unique() %>% pull()))
 
-tags_weird_depths %>% View()
+# tags_weird_depths %>% View()
 
 # see which tags give depth values <0
-tags_cod %>% 
-  dplyr::filter(tag_serial_number %in% (tags_weird_depths %>% pull())) %>%
-  View()
+# tags_cod %>% 
+#   dplyr::filter(tag_serial_number %in% (tags_weird_depths %>% pull())) %>%
+#   View()
 
 # see what animals have sensor slope = 0
-animals_cod_depth %>% 
-  dplyr::filter(sensor_slope == 0)  %>%
-  View()
+# animals_cod_depth %>% 
+#   dplyr::filter(sensor_slope == 0)  %>%
+#   View()
 
-# lets see what the detected depths of the sensors with slope = 0.15 look like
-p_hist_depth_smallslope <- 
-  ggplot(data = detections_cod_depth %>%
-           dplyr::filter(tag_serial_number %in% (tags_weird_depths %>% 
-                                                   dplyr::filter(sensor_slope != 0) %>% 
-                                                   dplyr::select(tag_serial_number) %>% 
-                                                   pull()))) +
-  geom_histogram(aes(x = depth_m)) + 
-  labs(x = "depth in m", y = "number of detections", title = "Depth distribution of detections") +
-  scale_y_continuous(expand = c(0,0)) +
+# detections_smallslope <- detections_cod_depth %>%
+#            dplyr::filter(tag_serial_number %in% (tags_weird_depths %>% 
+#                                                    # dplyr::filter(sensor_slope != 0) %>% 
+#                                                    dplyr::select(tag_serial_number) %>% 
+#                                                    pull())) %>%
+#   dplyr::group_by(tag_serial_number) %>%
+#   dplyr::summarise(min_depth = depth_m %>% min(),
+#                    mean_depth = depth_m %>% mean(),
+#                    max_depth = depth_m %>% max())
+
+# make csv file with tags that have sensor slope == 0 or almost 0
+# write.csv(tags_weird_depths %>% dplyr::filter(sensor_slope == 0), 
+#           file = paste0(getwd(), "/data/cod_tags_sensor_slope_0.csv"))
+
+```
+
+## Depths per hour of the day
+
+### Summary table
+
+```{r depthbins}
+
+depth_per_hour <- detections_cod_depth %>%
+  dplyr::group_by(hour_of_day) %>%
+  dplyr::summarise(min_depth = depth_m %>% min() %>% round(digits = 2),
+                   mean_depth = depth_m %>% mean() %>% round(digits = 2),
+                   sd_depth = depth_m %>% sd() %>% round(digits = 2),
+                   median_depth = depth_m %>% median() %>% round(digits = 2),
+                   max_depth = depth_m %>% max() %>% round(digits = 2),
+                   n_individuals = tag_serial_number %>% unique() %>% length() %>% round(digits = 2),
+                   n_detections = n() %>% round(digits = 2))
+
+depth_per_hour_long <- depth_per_hour %>%
+  tidyr::pivot_longer(cols = min_depth:max_depth, names_to = "summary_statistic", values_to = "value")
+
+DT::datatable(depth_per_hour,
+              rownames = F,
+              filter = 'bottom',
+              extension = 'Buttons',
+              options = list(
+                pageLength = 30, 
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all'))
+              )
+            )
+
+```
+
+### Boxplots
+
+```{r deptBoxplot}
+# ALL DETECTIONS
+p_box_tod <- ggplot(data = detections_cod_depth) +
+  geom_boxplot(aes(x = hour_of_day, y = -depth_m)) +
+  labs(title = "Depth per hour of the day across all detections", x = "Hour of the day", y = "Depth in m") +
+  theme_bw()
+p_box_tod
+
+
+p_points_tod <- ggplot(data = depth_per_hour_long) +
+  geom_line(aes(x = hour_of_day, y = -value, colour = summary_statistic)) +
+  # geom_errorbar(aes(x = hour_of_day, ymin = -summary_statistic$mean_depth - summary_statistic$sd_depth, ymax = -summary_statistic$mean_depth + summary_statistic$sd_depth))+
+  labs(title = "Depth per hour of the day across all detections", x = "Hour of the day", y = "Depth in m", colour = "") +
+  theme_bw()
+p_points_tod
+# todo: geom ribon with max and min, new geom errorbar with deoth_per_hour (not the long df())
+
+p_points_tod <- ggplot(data = depth_per_hour) +
+  geom_line(aes(x = hour_of_day, y = -mean_depth)) +
+  # geom_ribbon(aes(x = hour_of_day, ymin = -max_depth, ymax = -min_depth)) +
+  geom_errorbar(aes(x = hour_of_day, ymin = -mean_depth - sd_depth, ymax = -mean_depth + sd_depth)) +
+  labs(title = "Depth per hour of the day across all detections", x = "Hour of the day", y = "Depth in m") +
+  theme_bw()
+p_points_tod
+# todo: geom ribon with max and min, new geom errorbar with deoth_per_hour (not the long df())
+
+
+# p_smooth_tod <- ggplot(data = detections_cod_depth %>%
+#                          dplyr::slice_sample(n = 1000)) +
+#   geom_smooth(aes(x = hour_of_day, y = -depth_m)) +
+#   labs(title = "Depth per hour of the day across all detections", x = "Hour of the day", y = "Depth in m") +
+#   theme_bw()
+# p_smooth_tod
+
+# PER MONTH
+p_box_tod_month <- ggplot(data = detections_cod_depth) +
+  geom_boxplot(aes(x = hour_of_day, y = -depth_m)) +
+  labs(title = "Depth per hour of the day, per month", x = "Hour of the day", y = "Depth in m") +
+  facet_wrap(~month) +
+  scale_x_discrete(breaks = seq(0,24, by = 2)) +
   theme_bw()
 
-p_hist_depth_smallslope
+p_box_tod_month
+
+
 
 ```
 
