@@ -60,18 +60,20 @@ load_data <- function(filestring, folder){
 # PROJECTS
 project_codes <- c("rijke_noordzee", "PC4C", "2015_PHD_verhelst_cod", "2010_PHD_Reubens", "codnoise")
 
-# ANIMALS
-animals_cod <- etn::get_animals(animal_project_code = project_codes) %>%
-  remove_double_cols()
+#For now: no direct query through the ETN database but load data in folder ./data/data_cod_janr
 
-save_data(animals_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
+# ANIMALS
+# animals_cod <- etn::get_animals(animal_project_code = project_codes) %>%
+#   remove_double_cols()
+# save_data(animals_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
+animals_cod <- load_data("animals_cod", folder = paste0(getwd(), "/data/data_cod_janr/"))
 
 # TAG INFORMATION
-tags_cod <- etn::get_tags(acoustic_tag_id = animals_cod$acoustic_tag_id)
+# tags_cod <- etn::get_tags(acoustic_tag_id = animals_cod$acoustic_tag_id)
+# save_data(tags_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
 tags_relevant_cols <- c("tag_serial_number", "sensor_type", "manufacturer", "model", "frequency", "status", "battery_estimated_life", "activation_date", "battery_estimated_end_date", "sensor_slope", "sensor_intercept", "sensor_range", "sensor_unit", "sensor_transmit_ratio", "accelerometer_algorithm", "sensor_transmit_ratio", "owner_pi", "step1_min_delay", "step1_max_delay", "step1_duration", "step1_acceleration_duration")
 # "acoustic_tag_id", "tag_type", "acoustic_tag_id_alternative",
-
-save_data(tags_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
+tags_cod <- load_data("tags_cod", folder = paste0(getwd(), "/data/data_cod_janr/"))
 
 # only keep the animals for which we have depth sensor information
 animals_cod_depth <- animals_cod %>%
@@ -100,10 +102,12 @@ animals_cod_depth <- animals_cod %>%
 # animals_cod_depth$tag_serial_number %>% unique() %>% length()
 
 # DETECTIONS
-detections_cod <- etn::get_acoustic_detections(
-  acoustic_tag_id = animals_cod_depth$acoustic_tag_id %>% unique())
+# detections_cod <- etn::get_acoustic_detections(
+#   acoustic_tag_id = animals_cod_depth$acoustic_tag_id %>% unique())
+# 
+# save_data(detections_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
+load_data("detections_cod", folder = paste0(getwd(), "/data/data_cod_janr/"))
 
-save_data(detections_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
 # detections_cod$tag_serial_number %>% unique() %>% length()
 # detections_cod$date_time %>% min()
 # detections_cod$date_time %>% max()
