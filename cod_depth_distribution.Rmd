@@ -29,6 +29,7 @@ library(DT) # for interactive tables
 
 con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
 
+# FUNCTIONS
 # function to clean ETN tables
 remove_double_cols <- function(animals){
   animals$tag_serial_number <- gsub(",.*","", animals$tag_serial_number)
@@ -38,6 +39,20 @@ remove_double_cols <- function(animals){
   return(animals)
 }
 
+# save data as.rds ####
+# folder needs to have a '/' as last character
+
+save_data <- function(data, folder){
+  base::saveRDS(data, file = paste0(folder, deparse(substitute(data)), ".rds"))
+}
+
+# load rds data ####
+
+load_data <- function(filestring, folder){
+  data <- base::readRDS(file = paste0(folder, filestring, ".rds"))
+  return(data)
+}
+
 ```
 
 ```{r dataquery, include=F, echo=F}
@@ -45,19 +60,18 @@ remove_double_cols <- function(animals){
 # PROJECTS
 project_codes <- c("rijke_noordzee", "PC4C", "2015_PHD_verhelst_cod", "2010_PHD_Reubens", "codnoise")
 
-cod_projects <- etn::get_animal_projects(animal_project_code = project_codes)
-# cod_projects %>% View()
-
-
 # ANIMALS
 animals_cod <- etn::get_animals(animal_project_code = project_codes) %>%
   remove_double_cols()
 
+save_data(animals_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
 
 # TAG INFORMATION
 tags_cod <- etn::get_tags(acoustic_tag_id = animals_cod$acoustic_tag_id)
 tags_relevant_cols <- c("tag_serial_number", "sensor_type", "manufacturer", "model", "frequency", "status", "battery_estimated_life", "activation_date", "battery_estimated_end_date", "sensor_slope", "sensor_intercept", "sensor_range", "sensor_unit", "sensor_transmit_ratio", "accelerometer_algorithm", "sensor_transmit_ratio", "owner_pi", "step1_min_delay", "step1_max_delay", "step1_duration", "step1_acceleration_duration")
 # "acoustic_tag_id", "tag_type", "acoustic_tag_id_alternative",
+
+save_data(tags_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
 
 # only keep the animals for which we have depth sensor information
 animals_cod_depth <- animals_cod %>%
@@ -89,6 +103,7 @@ animals_cod_depth <- animals_cod %>%
 detections_cod <- etn::get_acoustic_detections(
   acoustic_tag_id = animals_cod_depth$acoustic_tag_id %>% unique())
 
+save_data(detections_cod, folder = paste0(getwd(), "/data/data_cod_janr/"))
 # detections_cod$tag_serial_number %>% unique() %>% length()
 # detections_cod$date_time %>% min()
 # detections_cod$date_time %>% max()
@@ -226,7 +241,7 @@ p_box_tod
 
 
 p_points_tod <- ggplot(data = depth_per_hour_long) +
-  geom_line(aes(x = hour_of_day, y = -value, colour = summary_statistic)) +
+  geom_poiny(aes(x = hour_of_day, y = -value, colour = summary_statistic)) +
   # geom_errorbar(aes(x = hour_of_day, ymin = -summary_statistic$mean_depth - summary_statistic$sd_depth, ymax = -summary_statistic$mean_depth + summary_statistic$sd_depth))+
   labs(title = "Depth per hour of the day across all detections", x = "Hour of the day", y = "Depth in m", colour = "") +
   theme_bw()
@@ -234,9 +249,9 @@ p_points_tod
 # todo: geom ribon with max and min, new geom errorbar with deoth_per_hour (not the long df())
 
 p_points_tod <- ggplot(data = depth_per_hour) +
-  geom_line(aes(x = hour_of_day, y = -mean_depth)) +
+  geom_bar(aes(x = hour_of_day, y = -mean_depth), stat = "identity") +
   # geom_ribbon(aes(x = hour_of_day, ymin = -max_depth, ymax = -min_depth)) +
-  geom_errorbar(aes(x = hour_of_day, ymin = -mean_depth - sd_depth, ymax = -mean_depth + sd_depth)) +
+  # geom_errorbar(aes(x = hour_of_day, ymin = -mean_depth - sd_depth, ymax = -mean_depth + sd_depth)) +
   labs(title = "Depth per hour of the day across all detections", x = "Hour of the day", y = "Depth in m") +
   theme_bw()
 p_points_tod
