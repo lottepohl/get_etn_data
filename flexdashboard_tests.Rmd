@@ -3,7 +3,7 @@ title: "Tests of `flexdashboard` functionalities"
 output:
   flexdashboard::flex_dashboard:
     orientation: columns
-    vertical_layout: fill
+    vertical_layout: scroll
     theme: 
       version: 4
       bootswatch: litera
@@ -42,7 +42,7 @@ library(kableExtra)
 library(plotly)
 library(scico) #colour palettes
 library(gridExtra)
-library(ggridges)
+# library(ggridges)
 
 
 ```
