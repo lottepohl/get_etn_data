@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ---
 title: "Tests of `flexdashboard` functionalities"
 output:
@@ -227,3 +228,180 @@ leaflet() %>%
 * test
 
 * test
+=======
+---
+title: "Tests of `flexdashboard` functionalities"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: scroll
+    theme: 
+      version: 4
+      bootswatch: litera
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE, echo = F}
+
+# knitr::opts_chunk$set(echo = F)
+# Sys.setlocale("LC_TIME", "English") # language = English, does not work right now
+
+# fundamentals
+library(flexdashboard)
+library(etn)
+library(knitr)
+library(shiny)
+
+# data wrangling
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(lubridate)
+library(utils)
+library(tidyverse)
+
+# maps
+library(leaflet)
+library(leafem)
+
+# plotting and tables
+library(DT) # for interactive tables
+library(ggplot2)
+library(kableExtra)
+library(plotly)
+library(scico) #colour palettes
+library(gridExtra)
+# library(ggridges)
+
+
+```
+
+
+```{r database query, include=FALSE, echo=FALSE}
+
+path_animals <- paste0(getwd(), "/data/Squalus_acanthias_animals.csv")
+animals <- utils::read.table(file = path_animals, 
+                            header = T,
+                            sep = ",")
+
+```
+
+
+
+Column {data-width=450}
+-------------------------------------
+
+### {data-height=850 .tabset}
+
+
+#### Acoustic receivers
+
+```{r map}
+
+
+leaflet() %>%
+  addTiles()
+
+```
+
+<!-- > Map with receiver deployments and acoustic detections. -->
+
+
+#### Questions
+
+* Is it correct that receiver stations well into the Schelde apparently detected S. acanthias
+
+* Are the animals really equipped with tags that last for 6 years (i.e., being detected between 2016 and 2022)?
+
+> I suspect that the detections from ~2018/19 onwards are fake detections...What do you say?
+
+
+#### Improvements
+
+* mark sex in abacus plot (either by colouring the y axis label or by inserting a symbol that maps sex at the tagging date)
+
+* map # detections onto the stations on the acoustic receiver map
+
+
+### {data-height=150}
+ 
+```{r valueBoxes}
+
+valueBox(animals %>% nrow(), 
+
+         caption = '# animals tagged', 
+
+         icon = 'fa-fish-fins'
+
+         # ,href = '#trip-duration'
+
+)
+
+
+valueBox(100, 
+
+         caption = 'test', 
+
+         icon = 'fa-fish-fins'
+
+         # ,href = '#trip-duration'
+
+)
+```
+
+ 
+Column {data-width=650}
+-------------------------------------   
+
+    
+### Acoustic detections {data-height=600}
+    
+```{r abacus}
+
+
+```
+
+
+### {data-height=400}
+
+```{r table}
+
+# make table
+table_animals <- 
+  DT::datatable(animals %>% 
+                  dplyr::select(idPk, utcReleaseDateTime, sex, tag, releaseLatitude, releaseLongitude) %>%
+                  dplyr::rename(animal_id = idPk, release_date_time = utcReleaseDateTime,  release_latitude = releaseLatitude, release_longitude = releaseLongitude), #release_location = tagging_location,
+              rownames = F,
+              filter = 'bottom',
+              extension = 'Buttons',options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all'))
+              )
+            ) %>%
+  formatStyle(
+  c('animal_id', 'sex'),
+  fontWeight = "bold") %>%
+  formatStyle(
+  'sex',
+  backgroundColor = styleEqual(c("F", "M"), c('#FFBB81', '#89B6BD')))
+
+
+
+shiny::tabsetPanel(
+  tabPanel("Info about tagged animals",
+           table_animals),
+  tabPanel("Latitudinal distribution",
+           "hello world"
+           )
+)
+
+
+```
+
+
+
+
+>>>>>>> 50f7c3554bedde8d27187d91cfb486a5647c6f4d
