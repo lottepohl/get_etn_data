@@ -59,13 +59,55 @@ animals <- utils::read.table(file = path_animals,
 
 
 
-Column {data-width=450}
+Twaite Shads
+=====================================
+
+
+Column {data-width=1000 .tabset}
 -------------------------------------
 
-### {data-height=850 .tabset}
+### Acoustic receivers
+
+```{r doublecols jira}
+
+# libraries
+library(etn)
+library(dplyr)
+library(tidyverse)
+
+# database connection
+con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
+
+# get ETN animals
+M_asterias <- etn::get_animals(scientific_name = "Mustelus asterias")
+G_morhua <- etn::get_animals(scientific_name = "Gadus morhua")
+G_morhua_projects <- etn::get_animals(animal_project_code = c("rijke_noordzee", "PC4C", "2015_PHD_verhelst_cod", "2010_PHD_Reubens", "codnoise"))
+
+# Why are there more cod in the df with specified projects than in the one where (I thought) tagged from all projects are retrieved?
+G_morhua %>% nrow()
+G_morhua_projects %>% nrow()
 
 
-#### Acoustic receivers
+# inspect animal dfs
+M_asterias %>% 
+  dplyr::select(tag_serial_number:acoustic_tag_id) %>%
+  head() %>% 
+  View()
+# For M. asterias, the selected columns have double entries
+
+G_morhua %>% 
+  dplyr::select(tag_serial_number:acoustic_tag_id) %>%
+  head() %>% 
+  View()
+# For 
+
+G_morhua_projects %>% 
+  dplyr::select(tag_serial_number:acoustic_tag_id) %>%
+  head() %>% 
+  View()
+
+```
+
 
 ```{r map}
 
@@ -78,7 +120,7 @@ leaflet() %>%
 <!-- > Map with receiver deployments and acoustic detections. -->
 
 
-#### Questions
+### Questions
 
 * Is it correct that receiver stations well into the Schelde apparently detected S. acanthias
 
@@ -87,53 +129,46 @@ leaflet() %>%
 > I suspect that the detections from ~2018/19 onwards are fake detections...What do you say?
 
 
-#### Improvements
+### Improvements
 
 * mark sex in abacus plot (either by colouring the y axis label or by inserting a symbol that maps sex at the tagging date)
 
 * map # detections onto the stations on the acoustic receiver map
 
 
-### {data-height=150}
- 
-```{r valueBoxes}
+<!-- ### {data-height=150} -->
 
-valueBox(animals %>% nrow(), 
+<!-- ```{r valueBoxes} -->
 
-         caption = '# animals tagged', 
+<!-- valueBox(animals %>% nrow(),  -->
 
-         icon = 'fa-fish-fins'
+<!--          caption = '# animals tagged',  -->
 
-         # ,href = '#trip-duration'
+<!--          icon = 'fa-fish-fins' -->
 
-)
+<!--          # ,href = '#trip-duration' -->
+
+<!-- ) -->
 
 
-valueBox(100, 
+<!-- valueBox(100,  -->
 
-         caption = 'test', 
+<!--          caption = 'test',  -->
 
-         icon = 'fa-fish-fins'
+<!--          icon = 'fa-fish-fins' -->
 
-         # ,href = '#trip-duration'
+<!--          # ,href = '#trip-duration' -->
 
-)
-```
+<!-- ) -->
+<!-- ``` -->
 
- 
-Column {data-width=650}
--------------------------------------   
+
+<!-- Column {data-width=650} -->
+<!-- -------------------------------------    -->
 
     
-### Acoustic detections {data-height=600}
+### Acoustic detections
     
-```{r abacus}
-
-
-```
-
-
-### {data-height=400}
 
 ```{r table}
 
@@ -170,6 +205,25 @@ shiny::tabsetPanel(
 
 ```
 
+Page 2 {data-navmenu="Mackerel"}
+=====================================
 
 
+Column {data-width=1000 .tabset}
+-------------------------------------
 
+### Acoustic receivers
+
+```{r map2}
+
+
+leaflet() %>%
+  addTiles()
+
+```
+
+### more info
+
+* test
+
+* test
