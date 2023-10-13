@@ -1,0 +1,111 @@
+---
+title: "Layout tests"
+output:
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    orientation: rows
+    vertical_layout: scroll
+    theme: 
+      version: 4
+      bootswatch: litera
+editor_options: 
+  chunk_output_type: console
+---
+
+Overview
+=====================================
+
+Row {data-height=1000}
+-------------------------------------
+    
+### Map
+
+```{r}
+library(leaflet)
+
+leaflet() %>%
+  addTiles()
+```
+
+
+> some info text   
+   
+   
+### Abacus plot
+
+```{r}
+
+leaflet() %>%
+  addTiles()
+
+```   
+ 
+ 
+> more info text
+
+
+Row
+-------------------------------------
+
+### Table
+    
+```{r}
+```
+
+
+Details (acoustic_project_codes)
+=====================================
+
+Row {data-height=100}
+-------------------------------------
+
+### General Information
+
+
+* this is some examples text 
+
+- another bullet point text
+- yet another bullet point
+
+and this is text without a bullet point.
+
+
+> and this is a quote (I hope).
+
+  
+Row {data-height=1000}
+-------------------------------------
+
+### Map
+
+```{r}
+library(leaflet)
+
+leaflet() %>%
+  addTiles()
+```
+
+
+> some info text   
+   
+   
+### Abacus plot
+
+```{r}
+
+leaflet() %>%
+  addTiles()
+
+```   
+ 
+ 
+> more info text
+
+
+Row
+-------------------------------------
+
+### Table
+    
+```{r}
+```

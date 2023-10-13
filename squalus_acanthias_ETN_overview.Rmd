@@ -2,8 +2,9 @@
 title: "Squalus acanthias ETN detections overview"
 output:
   flexdashboard::flex_dashboard:
-    orientation: columns
-    vertical_layout: fill
+    source_code: embed
+    orientation: rows
+    vertical_layout: scroll
     theme: 
       version: 4
       bootswatch: litera
@@ -29,6 +30,7 @@ library(dplyr)
 library(lubridate)
 library(utils)
 library(tidyverse)
+library(forcats)
 
 # maps
 library(leaflet)
@@ -43,10 +45,6 @@ library(scico) #colour palettes
 
 # database connection
 con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
-
-
-# trips_df <- read_csv('https://assets.datacamp.com/production/repositories/1448/datasets/1f12031000b09ad096880bceb61f6ca2fd95e2eb/sanfran_bikeshare_joined_oneday.csv')
-
 ```
 
 
@@ -86,34 +84,79 @@ tagging_locations <- tagging_locations %>%
 
 # DETECTIONS
 detections <- etn::get_acoustic_detections(scientific_name = species_name) 
+
+
+detections_summary <- detections %>% dplyr::group_by(acoustic_project_code) %>%
+  dplyr::summarise(n_detections = n(),
+                   n_individuals = tag_serial_number %>% unique() %>% length(),
+                   first_detection = min(date_time),
+                   last_detection = max(date_time),
+                   lat_min= min(deploy_latitude),
+                   lat_mean = mean(deploy_latitude) %>% round(digits = 2),
+                   lat_max = max(deploy_latitude),
+                   animal_ids = paste(animal_id %>% unique(), collapse = ", "),
+                   tag_serial_numbers = paste(tag_serial_number %>% unique(), collapse = ", "),
+                   acoustic_tag_ids = paste(acoustic_tag_id %>% unique(), collapse = ", ")) %>%
+  dplyr::mutate(acoustic_project_code = acoustic_project_code %>% factor() %>% reorder(lat_mean)) # %>% forcats::fct_rev()
+
+# per individual
 detections_month <- detections %>% dplyr::mutate(year = lubridate::year(date_time),
                                                  month = lubridate::month(date_time, label = T, abbr = T),
                                                  month_count = lubridate::month(date_time, label = F),
                                                  monthyear = paste0(month, "-", year)) %>%
-  dplyr::group_by(animal_id, station_name, monthyear) %>%
+  dplyr::group_by(animal_id, monthyear) %>%
   dplyr::summarise(n_detections = n(),
                    year = year[1],
                    month = month[1],
                    month_count = month_count[1],
                    date = as.POSIXct(paste0(year, "-", month_count, "-28"), tz = "UTC"),
                    deploy_latitude = deploy_latitude[1],
-                   deploy_longitude = deploy_longitude[1])
+                   deploy_longitude = deploy_longitude[1],
+                   n_stations = station_name %>% unique() %>% length(),
+                   n_individuals = tag_serial_number %>% unique() %>% length(),
+                   acoustic_project_code = acoustic_project_code[1],) %>%
+  dplyr::mutate(acoustic_project_code = acoustic_project_code %>% factor(levels = levels(detections_summary$acoustic_project_code)))
 
+# per receiver station
+detections_month_station <- detections %>% dplyr::mutate(year = lubridate::year(date_time),
+                                                 month = lubridate::month(date_time, label = T, abbr = T),
+                                                 month_count = lubridate::month(date_time, label = F),
+                                                 monthyear = paste0(month, "-", year)) %>%
+  dplyr::group_by(acoustic_project_code, monthyear) %>%
+  dplyr::summarise(n_detections = n(),
+                   year = year[1],
+                   month = month[1],
+                   month_count = month_count[1],
+                   date = as.POSIXct(paste0(year, "-", month_count, "-28"), tz = "UTC"),
+                   deploy_latitude = deploy_latitude[1],
+                   deploy_longitude = deploy_longitude[1],
+                   n_stations = station_name %>% unique() %>% length(),
+                   n_individuals = tag_serial_number %>% unique() %>% length()) %>%
+  dplyr::mutate(acoustic_project_code = acoustic_project_code %>% factor(levels = levels(detections_summary$acoustic_project_code)))
+
+# levels(detections_summary$acoustic_project_code)
+# detections_month$acoustic_project_code %>% levels()
 
 # RECEIVER STATIONS
 stations <- detections %>% #dplyr::select(station_name, deploy_latitude, deploy_longitude) %>% unique() %>%
   group_by(station_name) %>%
   summarise(deploy_latitude = mean(deploy_latitude),
-            deploy_longitude = mean(deploy_longitude))
-
-# deployments <- detections %>% dplyr::select(station_name, deploy_latitude, deploy_longitude, deployment_id, receiver_id) %>% unique()
+            deploy_longitude = mean(deploy_longitude),
+            acoustic_project_code = acoustic_project_code[1],
+            n_detections = n(),
+            n_individuals = tag_serial_number %>% unique() %>% length(),
+            first_detection = min(date_time),
+            last_detection = max(date_time),
+            animal_project_code = animal_project_code[1]) %>%
+  dplyr::mutate(acoustic_project_code = acoustic_project_code %>% factor(levels = levels(detections_summary$acoustic_project_code)))
 
 
 ```
 
+Overview
+=====================================
 
-
-Column {data-width=450}
+Row {data-height=1000}
 -------------------------------------
     
 ### Map with receivers that detected S. acanthias
@@ -234,9 +277,6 @@ leaflet.extras::addFullscreenControl() %>%
   
 <!-- > Map with receiver deployments and acoustic detections. -->
  
- 
-Column {data-width=650}
--------------------------------------   
     
 ### Monthly abacus plot of detections
     
@@ -248,9 +288,9 @@ plot_abacus_month <- ggplot() +
              colour = "red", linewidth = 2) +
   geom_point(data = detections_month %>% dplyr::mutate(animal_id = animal_id %>% as.character()),
              aes(x = date, y = animal_id, colour = deploy_latitude, size = n_detections)) + 
-  # geom_point(data = animals %>% dplyr::mutate(idPk = idPk %>% as.character(),
+  # geom_point(data = animals %>% dplyr::mutate(animal_id = animal_id %>% as.character(),
   #                                             catchedDateTime = catchedDateTime %>% as.POSIXct(tz = "UTC")),
-  #            aes(x = catchedDateTime, y = idPk),
+  #            aes(x = catchedDateTime, y = animal_id),
   #            colour = "red", shape = 4, size = 3) +
   labs(x = "date", y = "animal id", size = "# detections", colour = "longitude") +
   scale_x_datetime(date_breaks = "6 months",
@@ -266,6 +306,11 @@ plot_abacus_month %>% plotly::ggplotly()
 ```
 
 > All individuals were tagged in late July, 2016, in Loch Etive (Scotland). 
+
+
+Row {data-height=1000}
+-------------------------------------
+
 
 ### Table with animal information
 
@@ -297,5 +342,157 @@ DT::datatable(animals %>%
 ```
 
 
+Acoustic Detections
+=====================================
 
+Row {data-height=100}
+-------------------------------------
+
+* Of the `r detections %>% nrow()` detections, `r detections %>% filter(acoustic_project_code != "LESPUR") %>% nrow()` detections were from stations outside of the LESPUR acoustic/animal project. See below for a more detailed overview.
+
+
+
+Row {data-height=900}
+-------------------------------------
+
+
+
+### Detections by station and acoustic project code
+
+```{r detectionsmap}
+
+# colour palettes
+col_fun2 <- scico::scico(n = stations$acoustic_project_code %>% unique() %>% length(),
+                        palette = "managua")
+pal2 <- leaflet::colorFactor(col_fun2, domain = stations$acoustic_project_code)
+# qpal2 <- colorQuantile(col_fun2, domain = detections$acoustic_project_code, n = 5)
+# palette_latitudes_df <- tibble(deploy_latitude = stations$deploy_latitude, color = pal2(stations$deploy_latitude))
+
+
+# legend_latitudes <- stations %>% 
+#   dplyr::mutate(bin_n5 = deploy_latitude %>% dplyr::ntile(n = 5)) %>%
+#   dplyr::group_by(bin_n5) %>%
+#   dplyr::summarise(min = deploy_latitude %>% min(),
+#                    max = deploy_latitude %>% max()) %>%
+#   dplyr::mutate(color = qpal(stations$deploy_latitude) %>% unique())
+
+leaflet() %>% 
+  
+#background
+  # addTiles() %>%
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.6), group = "satellite") %>%
+  leaflet::addTiles(urlTemplate = emodnet_tiles,
+                    # options = leaflet::tileOptions(tms = FALSE),
+                    attribution = cite_emodnet,
+                    group = "EMODnet bathymetry") %>%
+  # addRasterImage(bathy_belgium_raster, opacity = 1, colors = "Spectral", group = "bathymetry") %>%
+  # addPolygons(data = coastline_BE_poly, opacity = 1, fillColor = "grey", weight = 0, fillOpacity = 0.7, group = "bathymetry") %>% #"#ECE4BF"
+  addTiles(group = "OpenStreetMap") %>%
+
+#data: receiver stations
+  addCircleMarkers(data = stations,
+                   # clusterOptions = markerClusterOptions(showCoverageOnHover = F, zoomToBoundsOnClick = T, freezeAtZoom = 7),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = ~log(n_detections) * 2.5, # * (10 / log(n_detections)),
+                   color = "black",
+                   weight = 1,
+                   fillOpacity = 1,
+                   fillColor = ~pal2(acoustic_project_code),
+                   opacity = 1,
+                   label = ~paste0("acoustic project '", acoustic_project_code, "', station: ", station_name),
+                   popup = ~paste0("# detections: ", n_detections, ", # individuals: ", n_individuals, ", lat: ", deploy_latitude %>% round(digits = 2), ", lon: ", deploy_longitude %>% round(digits = 2)),
+                   group = "receiver stations"
+                   ) %>%
+  
+#data: tagging locations
+  addAwesomeMarkers(data = tagging_locations,
+                   icon = icon_tag,
+                   clusterOptions = markerClusterOptions(), #showCoverageOnHover = T, zoomToBoundsOnClick = T, 
+                   lat = ~releaseLatitude,
+                   lng = ~releaseLongitude,
+                   # radius = 5,
+                   # fillOpacity = 0.7,
+                   # fillColor = "yellow",
+                   # opacity = 0,
+                   label = ~paste0("name: ", tagging_location),
+                   popup = ~paste0("lat: ", releaseLatitude, ", lon: ", releaseLongitude, ", #sharks tagged: ", ind_tagged),
+                   group = "tagging locations"
+                   ) %>%
+
+# add-ons
+leaflet.extras::addFullscreenControl() %>%
+  leafem::addMouseCoordinates() %>%
+  addScaleBar(position = "bottomright",
+              options = scaleBarOptions(
+                maxWidth = 150,
+              imperial = FALSE)) %>%
+  
+# layers control
+  addLayersControl(position = "topright" ,
+                   baseGroups = c("EMODnet bathymetry", "satellite", "OpenStreetMap"),
+                   overlayGroups = c("receiver stations", "tagging locations"),
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  hideGroup("tagging locations") #%>%
+#   
+# # legend
+#   addLegend(position = "bottomleft",
+#             colors = legend_latitudes$color %>% rev(),
+#             labels = paste0(legend_latitudes$min %>% round(), " - ", legend_latitudes$max %>% round()) %>% rev(),
+#             opacity = 1,
+#             title = "Latitude")
+
+```
+
+
+> The colours of the circles correspond to the acoustic_project_code and the colours are ordered by latitude, the size corresponds to the number of detections at that station.
+
+
+### Monthly abacus plot with acoustic project codes
+
+
+```{r abacusacousticprojects}
+
+plot_abacus_acoustic_project_month <- ggplot(data = detections_month_station) +
+  geom_point(aes(x = date, y = acoustic_project_code, colour = acoustic_project_code, size = n_detections)) +
+  labs(x = "date", y = "acoustic project code", size = "# detections", colour = "longitude") +
+  scale_x_datetime(date_breaks = "6 months",
+                   date_minor_breaks = "1 month",
+                   date_labels = "%b '%y"
+                   # ,expand = c(0,0)
+  ) +
+  # scale_y_reverse() +
+  # scale_y_discrete(limits = rev(levels(acoustic_project_code))) +
+  scico::scale_color_scico_d(palette = "managua") +
+  theme_bw()
+
+plot_abacus_acoustic_project_month %>% plotly::ggplotly()
+
+
+```
+
+
+Row {data-height=1000}
+-------------------------------------
+
+
+### Summary of acoustic detections by acoustic project
+
+```{r detectionschecks}
+
+# check out acoustic project codes of detections
+
+DT::datatable(detections_summary %>%
+                dplyr::select(!c(lat_min, lat_max)),
+              rownames = F,
+              filter = 'bottom',
+              extension = 'Buttons',
+              options = list(
+                pagelength = 10,
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all'))
+              )
+            )
+```
 
