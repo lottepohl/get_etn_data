@@ -89,6 +89,7 @@ detections <- etn::get_acoustic_detections(scientific_name = species_name)
 detections_summary <- detections %>% dplyr::group_by(acoustic_project_code) %>%
   dplyr::summarise(n_detections = n(),
                    n_individuals = tag_serial_number %>% unique() %>% length(),
+                   n_stations = station_name %>% unique() %>% length(),
                    first_detection = min(date_time),
                    last_detection = max(date_time),
                    lat_min= min(deploy_latitude),
@@ -153,7 +154,7 @@ stations <- detections %>% #dplyr::select(station_name, deploy_latitude, deploy_
 
 ```
 
-Overview
+Overview: Receiver stations detecting S. acanthias
 =====================================
 
 Row {data-height=1000}
@@ -342,17 +343,17 @@ DT::datatable(animals %>%
 ```
 
 
-Acoustic Detections
+Details: Acoustic Detections by acoustic_project_code
 =====================================
 
-Row {data-height=100}
+Row {data-height=50}
 -------------------------------------
 
 * Of the `r detections %>% nrow()` detections, `r detections %>% filter(acoustic_project_code != "LESPUR") %>% nrow()` detections were from stations outside of the LESPUR acoustic/animal project. See below for a more detailed overview.
 
 
 
-Row {data-height=900}
+Row {data-height=1000}
 -------------------------------------
 
 
@@ -455,7 +456,7 @@ leaflet.extras::addFullscreenControl() %>%
 
 plot_abacus_acoustic_project_month <- ggplot(data = detections_month_station) +
   geom_point(aes(x = date, y = acoustic_project_code, colour = acoustic_project_code, size = n_detections)) +
-  labs(x = "date", y = "acoustic project code", size = "# detections", colour = "longitude") +
+  labs(x = "date", y = "acoustic project code", size = "# detections", colour = "latitude") +
   scale_x_datetime(date_breaks = "6 months",
                    date_minor_breaks = "1 month",
                    date_labels = "%b '%y"

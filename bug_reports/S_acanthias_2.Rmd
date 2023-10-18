@@ -176,7 +176,7 @@ Row {data-height=1000}
 ### Detections by station and acoustic project code
 
 ```{r detectionsmap}
-
+  
 # EMODnet Bathymetry layer
 emodnet_tiles <-"https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png"
 cite_emodnet <- "<a href='https://emodnet.ec.europa.eu'>EMODnet</a>"

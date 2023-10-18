@@ -181,7 +181,30 @@ ggplot(data_pie_chart, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=sex)) +
 
 # 2. Lost receivers
 
+## Tables {.tabset}
+
 <!-- barplot with years stacked on top of each other -->
+
+```{r tablelostreceivers}
+
+receivers_lost_overview <- receivers_lost %>%
+  dplyr::group_by(year, acoustic_project_code) %>%
+  dplyr::summarise(n = dplyr::n()) %>%
+  tidyr::pivot_wider(names_from = acoustic_project_code,
+                     values_from = n) %>%
+  replace(is.na(.), 0) %>%
+  dplyr::mutate(year = ifelse(year == 0, NA, year))
+
+DT::datatable(detections_shad_area,
+              rownames = F,
+              # filter = 'bottom',
+              extension = 'Buttons',options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                columnDefs = list(list(className = 'dt-center', targets = '_all'))
+              )
+            )
+```
 
 
 <!-- #### Other -->
@@ -203,7 +226,7 @@ ggplot(data_pie_chart, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=sex)) +
 
 
 
-### Tagging location
+### Map
 
 ```{r map, message = FALSE, echo = FALSE}
 # MAP PREREQUISITES
@@ -270,7 +293,7 @@ m2 <- leaflet() %>%
              color = ~pal(year),
              popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
                            "<b>Owner:</b> ",owner_organization, "<br>",
-                           "<b>Year:</b> ", year),
+                           "<b>Year lost:</b> ", year),
              group = "") %>% #label = ~paste(comments)
   
   # add-ons
