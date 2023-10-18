@@ -3,51 +3,61 @@ title: "Receiver report"
 subtitle: "maintained and lost receivers, 2012 to 2023"
 author: "Lotte Pohl"
 date: "18/10/2023"
-output: html_document
+output: 
+  html_document:
+    theme: readable 
+    toc_float: true
+    toc: true 
+    number_sections: false
+    toc_depth: 2
 editor_options: 
   chunk_output_type: console
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 ```
 
-<!-- ## The STRAITS project -->
-
-<!-- Strategic Infrastructure for improved animal Tracking in European Seas (STRAITS) will leverage ongoing acoustic tracking projects across the four corners of Europe (i.e., North Channel, Danish Straits, Straits of Gibraltar and the Bosporus/Dardanelles) by expanding efforts to connect initiatives on species-based biodiversity management while developing data management plans and networking channels to deliver data to national and international governing bodies.  -->
-
-<!-- Coordinating aquatic animal tracking and environmental observation efforts at a scale that will be usable to make progress on international marine management and planning, is a major step towards an operational European Tracking Network (ETN) that contributes to major European biodiversity initiatives, conservation, and policy. -->
 
 ```{r preparing datasets, include = FALSE}
 # LIBRARIES
+# fundamentals
+# library(devtools)
+# devtools::install_github("lifewatch/mregions2")
+# library(flexdashboard)
 library(etn)
-library(dplyr)
+library(knitr)
+# library(shiny)
+library(mregions2)
+
+# data wrangling
+library(readr)
+# library(tidyverse)
+library(tidyr)
 library(lubridate)
+library(dplyr)
+library(utils)
+# library(sf)
+library(purrr)
+library(glue)
+
+# maps
+library(leaflet)
+library(leafem)
+library(leaflet.extras)
 
 # plotting and tables
 library(DT) # for interactive tables
 library(ggplot2)
-library(kableExtra)
+# library(kableExtra)
 library(plotly)
 library(scico) #colour palettes
 library(gridExtra)
+# library(ggridges)
+
 
 # DATABASE CONNECTION
 con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
-
-# FUNCTIONS
-# function to remove double entries from ETN tables
-remove_double_cols <- function(animals){
-  animals$tag_serial_number <- gsub(",.*","", animals$tag_serial_number)
-  animals$tag_type <- gsub(",.*","", animals$tag_type)
-  animals$tag_subtype <- gsub(",.*","", animals$tag_subtype)
-  animals$acoustic_tag_id <- gsub(",.*","", animals$acoustic_tag_id)
-  return(animals)
-}
-
-# # get info from Jan's and Pieterjan's phd project:
-# project <- get_animal_projects(con, animal_project_code = c("2010_phd_reubens", "2015_phd_verhelst_cod", "2015_phd_verhelst_eel"))
-# animal_projects <- c("2010_phd_reubens", "2015_phd_verhelst_cod", "2015_phd_verhelst_eel")
 
 # DATA QUERIES
 
@@ -60,38 +70,35 @@ potential_acoustic_projects <- c("Apelafico", "bovenschelde", "cpodnetwork", "ET
 # deployments_BE <- etn::get_acoustic_deployments(con, acoustic_project_code = acoustic_projects_BE)
 # deployments_BE_potential <- etn::get_acoustic_deployments(con, acoustic_project_code = potential_acoustic_projects)
 
-deployments_BE_all <- etn::get_acoustic_deployments(con, acoustic_project_code = c(potential_acoustic_projects, acoustic_projects_BE))
+deployments_BE_all <- etn::get_acoustic_deployments(con, acoustic_project_code = c(potential_acoustic_projects, acoustic_projects_BE)) %>%
+  dplyr::mutate(deploy_year = deploy_date_time %>% lubridate::year())
 
-## 3. acoustic receivers (from the acoustic deployments above)
+## 3. maintained acoustic receivers
+
+receivers_maintained <- deployments_BE_all %>%
+  dplyr::group_by(deploy_year, acoustic_project_code) %>%
+  dplyr::summarise(n = dplyr::n()) %>%
+  tidyr::pivot_wider(names_from = acoustic_project_code,
+                     values_from = n) %>%
+  replace(is.na(.), 0) %>%
+  dplyr::mutate(total = rowSums(across())) %>%
+  dplyr::relocate(deploy_year, total, bpns, ws1, ws2, ws3, zeeschelde, bovenschelde)
+
+## 4. lost acoustic receivers (from the acoustic deployments above)
 
 last_deployment_per_receiver <- deployments_BE_all %>% 
   dplyr::group_by(receiver_id) %>%
   dplyr::summarise(deploy_date_time = max(deploy_date_time),
                    deployment_id = deployment_id[which.max(deploy_date_time)]) %>% #get the last deploy_date_time 
   left_join(deployments_BE_all %>%
-              dplyr::select(deployment_id, receiver_id, acoustic_project_code, recover_date_time, station_manager, deploy_latitude, deploy_longitude, battery_installation_date, comments), # get remaining columns
-            by = join_by(deployment_id, receiver_id)) 
+              dplyr::select(deployment_id, station_name, receiver_id, acoustic_project_code, recover_date_time, station_manager, deploy_latitude, deploy_longitude, battery_installation_date, comments), # get remaining columns
+            by = c('deployment_id', 'receiver_id'))
 
 receivers_lost <- etn::get_acoustic_receivers(status = "lost") %>%
   dplyr::left_join(last_deployment_per_receiver, by = "receiver_id") %>%
-  dplyr::mutate(year = deploy_date_time %>% lubridate::year())
+  dplyr::mutate(year = deploy_date_time %>% lubridate::year()) %>%
+  dplyr::select(!c(financing_project:ar_tilt_after_deploy))
 
-# 
-# # get the info on the animals tagged:
-# animals <- get_animals(con, animal_project_code = animal_projects)
-# animals$year <- year(animals$capture_date_time)
-# 
-# # select only necessary columns:
-# animals_data <- animals %>% 
-#   select("animal_id", "animal_project_code", "tag_type", "tag_subtype",
-#          "scientific_name","capture_date_time","capture_location","capture_latitude","capture_longitude",
-#          "capture_method","release_date_time","release_location","release_latitude","release_longitude",
-#          "recapture_date_time", "length1_type","length1","age","sex","tagging_type","tagging_methodology",
-#          "comments", "year")
-# 
-# 
-# # replace values of tag_type, we are not interested in the number of sensors the tag has
-# animals_data$tag_type[animals_data$tag_type == "acoustic-archival,acoustic-archival"] <- "acoustic-archival"
 ```
 
 ```{r otherqueries, include=F}
@@ -107,99 +114,57 @@ BPNS <- mregions2::gaz_search(3293) %>% mregions2::gaz_geometry()
 # 1. Maintained receivers
 
 
-
-<!-- ## Tagging efforts Pieterjan Verhalst PhD (2015) -->
-<!-- ### Overview -->
-<!-- Overview table of the tagging effort -->
-
-<!-- ```{r overview table, message = FALSE, echo = FALSE} -->
-<!-- # summarize the data -->
-<!-- animals_table <- animals_data %>% -->
-<!--   group_by(scientific_name, tag_type, year, capture_location, capture_method) %>% -->
-<!--   count() %>% -->
-<!--   arrange(., year) -->
-
-<!-- animals_table %>% -->
-<!--   filter(year == 2015) %>% -->
-<!--   kable() %>% -->
-<!--   kable_styling(bootstrap_options = "striped", full_width = F) -->
-<!-- ``` -->
-
-<!-- ### Tagging effort year 2015 -->
-<!-- Number of individuals tagged per species in 2015 -->
-<!-- ```{r bar plot, message = FALSE, echo = FALSE} -->
-
-<!-- #barplot -->
-<!-- p <- ggplot(subset(animals_table, animals_table$year == 2015), aes(x=scientific_name, y = n)) + -->
-<!--   geom_bar(stat = "identity", fill = "#222f62") + -->
-<!--   labs(x="Scientific name", y="number of individuals tagged") + -->
-<!--   theme_minimal() -->
-<!-- p -->
-<!-- #ggplotly(p) -->
-<!-- ``` -->
-
-<!-- ### Methodology -->
-<!-- ### Mortality ? -->
-<!-- Mortality is not tracked in ETN, as in, only alive individuals are uploaded to the system. This would be the only parameter that can not be added with ETN info alone.  -->
-
-<!-- ### Biometrics?  -->
-<!-- Not sure if that term can only be used for humans. -->
-
-#### Females vs males
-```{r donut_chart, message = FALSE, echo = FALSE}
-data_pie_chart <- animals_data %>%
-  filter(year == 2015) %>%
-  group_by(sex) %>%
-  count()
-
-# Compute percentages
-data_pie_chart$fraction = data_pie_chart$n / sum(data_pie_chart$n)
-
-# Compute the cumulative percentages (top of each rectangle)
-data_pie_chart$ymax = cumsum(data_pie_chart$fraction)
-
-# Compute the bottom of each rectangle
-data_pie_chart$ymin = c(0, head(data_pie_chart$ymax, n=-1))
-
-# Compute label position
-data_pie_chart$labelPosition <- (data_pie_chart$ymax + data_pie_chart$ymin) / 2
-
-# Compute a good label
-data_pie_chart$label <- paste0(data_pie_chart$sex, "\n value: ", data_pie_chart$n)
-
-# Make the plot
-ggplot(data_pie_chart, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=sex)) +
-  geom_rect() + 
-  coord_polar(theta="y") + # Try to remove that to understand how the chart is built initially
-  xlim(c(0, 4)) + # Try to remove that to see how to make a pie chart
-  geom_text(x=2, aes(y=labelPosition, label=label, color=sex), size=3) +
-  # scale_fill_brewer(c("#9D02D7", "#0000FF")) +
-  # scale_color_brewer(c("#9D02D7", "#0000FF")) +
-  theme_void() +
-  theme(legend.position = "none")
-
-```
-
 # 2. Lost receivers
 
-## Tables {.tabset}
+## Overview {.tabset}
 
-<!-- barplot with years stacked on top of each other -->
+The lost receivers without a `deploy_date_time` or an `acoustic_project_code` (n = `r receivers_lost %>% dplyr::filter(is.na(year) & is.na(acoustic_project_code)) %>% nrow()`) are excluded from the barplot.
 
-```{r tablelostreceivers}
+### Plot
 
+```{r lostreceivers, include=F}
 receivers_lost_overview <- receivers_lost %>%
   dplyr::group_by(year, acoustic_project_code) %>%
   dplyr::summarise(n = dplyr::n()) %>%
   tidyr::pivot_wider(names_from = acoustic_project_code,
                      values_from = n) %>%
   replace(is.na(.), 0) %>%
-  dplyr::mutate(year = ifelse(year == 0, NA, year))
+  dplyr::mutate(year = ifelse(year == 0, NA, year),
+                total = rowSums(across())) %>%
+  dplyr::relocate(year, total, bpns, ws1, ws2, ws3, zeeschelde, bovenschelde)
+```
 
-DT::datatable(detections_shad_area,
+```{r lostreceiversbarplot}
+
+receivers_lost_overview_long <- receivers_lost %>%
+  dplyr::group_by(year, acoustic_project_code) %>%
+  dplyr::summarise(n = dplyr::n()) %>%
+  dplyr::mutate(year = year %>% factor()) %>%
+  dplyr::filter(!is.na(year))
+
+
+p_lost_receivers <- ggplot(receivers_lost_overview_long) +
+  geom_bar(aes(x = year, y = n, fill = acoustic_project_code),
+           position = position_stack(), stat = "identity") +
+  scico::scale_fill_scico_d(palette = "roma") +
+  scale_y_continuous(expand = c(0,0)) +
+  # scale_x_datetime(breaks = "1 year") +
+  theme_bw() +
+  labs(y = "# of receivers lost", x = "year", fill = "acoustic project code")
+
+p_lost_receivers
+```
+
+### Table
+
+```{r lostreceiversoverviewtable}
+
+DT::datatable(receivers_lost_overview,
               rownames = F,
-              # filter = 'bottom',
-              extension = 'Buttons',options = list(
+              filter = 'bottom',
+              extension = 'Buttons',
+              options = list(
+                pageLength = 15,
                 dom = 'Bfrtip',
                 buttons = c('pdf', 'csv', 'excel', 'print','copy'),
                 columnDefs = list(list(className = 'dt-center', targets = '_all'))
@@ -208,32 +173,13 @@ DT::datatable(detections_shad_area,
 ```
 
 
-<!-- #### Other -->
-<!-- Other biometrics. There is a full list of options to chose from the ETN animals metadata template. -->
-<!-- ```{r biometrics_other, message = FALSE, echo = FALSE} -->
-<!-- biometric_data <- animals %>% -->
-<!--   filter(year == 2015) %>% -->
-<!--   filter(scientific_name == "Anguilla anguilla") %>% -->
-<!--   select(scientific_name, length1, length1_type, length1_unit, weight, weight_unit, age, age_unit, capture_location) -->
-
-<!-- p <- ggplot(biometric_data, aes(x = length1, y = weight, color = capture_location)) + -->
-<!--   geom_point(size = 4, alpha = 0.8) + -->
-<!--   scale_color_brewer(palette = "Paired", direction = -1) + -->
-<!--   labs(x="Total length in cm", y="Weight in grams") + -->
-<!--   theme_minimal() -->
-
-<!-- p +  theme(legend.position = "bottom") -->
-<!-- ``` -->
-
-
-
-### Map
+## Map
 
 ```{r map, message = FALSE, echo = FALSE}
 # MAP PREREQUISITES
 
 ## North Arrow
-north.arrow.icon <- 
+north.arrow.icon <-
   "<img src='https://www.clipartbest.com/cliparts/yTo/Lgr/yToLgryGc.png' style='width:40px;height:50px;'>"
 
 ## EMODnet Bathymetry layer
@@ -244,155 +190,517 @@ attr(cite_emodnet, "class") <- c("html", "character")
 ## colour palette
 col_fun <- scico::scico(n = receivers_lost$year %>% unique() %>% length(),
                         palette = "managua")
-pal <- leaflet::colorFactor(col_fun, domain = receivers_lost$year)
+
+palette_colorgorical <- c("#399283", "#b54164", "#b6eee2", "#866163", "#5cf070", "#fe7dda", "#83aa3e", "#6153a0", "#d3ee80", "#9844bf", "#3cfdd7", "#bf3e15", "#1aa7ee")
+  
+  # 
+  # c("#4f8c9d", "#bc0542", "#11e38c", "#6d1f27", "#72df19", "#521691", "#c0dea4", "#052b25", "#cad3fa", "#010840", "#54d7eb", "#b55d57", "#056e12")
+  # 
+  # c("#68affc", "#2e0c37", "#a9e81a", "#e0079b", "#539322", "#ab5cf6", "#d5fdb6", "#1607a3", "#f1e736", "#133346", "#faa38c", "#5054b1", "#fb7810")
+
+pal <- leaflet::colorFactor(palette_colorgorical, domain = receivers_lost$year)
+
+# col_fun_apc <- scico::scico(n = receivers_lost$acoustic_project_code %>% unique() %>% length(),
+#                         palette = "managua")
+# pal_apc <- leaflet::colorFactor(col_fun, domain = receivers_lost$acoustic_project_code)
 
 # MAP
 m2 <- leaflet() %>%
   setView(3.3, 51.296, zoom = 8) %>%
-#background
-  # addTiles() %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
-  # addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.6), group = "satellite") %>%
-  # leaflet::addTiles(urlTemplate = emodnet_tiles,
-  #                   # options = leaflet::tileOptions(tms = FALSE),
-  #                   attribution = cite_emodnet,
-  #                   group = "EMODnet bathymetry") %>%
-  # # addRasterImage(bathy_belgium_raster, opacity = 1, colors = "Spectral", group = "bathymetry") %>%
-  # # addPolygons(data = coastline_BE_poly, opacity = 1, fillColor = "grey", weight = 0, fillOpacity = 0.7, group = "bathymetry") %>% #"#ECE4BF"
-  # addTiles(group = "OpenStreetMap") %>%
-
-# EEZs
-  # addPolygons(data = EEZs, color = "darkgrey",
-  #             weight = 2,
-  #             opacity = 1.0,
-  #             popup = ~preferredGazetteerName,
-  #             fillOpacity = 0,
-  #             group = "EEZs") %>%
-
-#### area rectangles ####
-  # addRectangles( #WS1
-  # lng1 = 3.387, lat1 = 51.365, lng2 = 3.666, lat2 = 51.513,
-  # fillOpacity = 0.2, weight = 2, color = "grey", group = "receiver areas") %>%
-  # addRectangles( #WS2
-  # lng1 = 3.68, lat1 = 51.314, lng2 = 3.859, lat2 = 51.447,
-  # fillOpacity = 0.2, weight = 2, color = "grey", group = "receiver areas") %>%
-  # addRectangles( #WS3
-  # lng1 = 3.99, lat1 = 51.377, lng2 = 4.06, lat2 = 51.450,
-  # fillOpacity = 0.2, weight = 2, color = "grey", group = "receiver areas") %>%
-  # addRectangles( #zeeschelde
-  # lng1 = 3.889, lat1 = 50.965, lng2 = 4.510, lat2 = 51.325,
-  # fillOpacity = 0.2, weight = 2, color = "grey", group = "receiver areas") %>%
+# EEZ
   addPolygons(data = BPNS, color = "grey", weight = 2, fillOpacity = 0.15, group = "receiver areas") %>%
-  
   # lost receivers by year
-  addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time),
+  
+  ## 2011
+  addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2011)
+                   ,
              lng = ~deploy_longitude, 
              lat = ~deploy_latitude, 
              weight = 1,
-             fillOpacity = 0.9,
-             radius = 4,
-             color = ~pal(year),
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
              popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
                            "<b>Owner:</b> ",owner_organization, "<br>",
-                           "<b>Year lost:</b> ", year),
-             group = "") %>% #label = ~paste(comments)
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2011") %>% #label = ~paste(comments)
+    
+    ## 2012
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2012)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2012") %>% #label = ~paste(comments)
+  
+  ## 2014
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2014)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2014") %>% #label = ~paste(comments)
+  
+  ## 2015
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2015)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2015") %>% #label = ~paste(comments)
+  
+  ## 2016
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2016)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2016") %>% #label = ~paste(comments)
+  
+  ## 2017
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2017)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2017") %>% #label = ~paste(comments)
+  
+  ## 2018
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2018)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2018") %>% #label = ~paste(comments)
+  
+ ## 2019
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2019)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2019") %>% #label = ~paste(comments)
+  
+  ## 2020
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2020)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2020") %>% #label = ~paste(comments)
+  
+  ## 2021
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2021)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2021") %>% #label = ~paste(comments)
+  
+  ## 2022
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2022)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2022") %>% #label = ~paste(comments)
+  
+  ## 2023
+    addCircleMarkers(data = receivers_lost %>% tidyr::drop_na(deploy_date_time) 
+                    %>% dplyr::filter(year == 2023)
+                   ,
+             lng = ~deploy_longitude, 
+             lat = ~deploy_latitude, 
+             weight = 1,
+             fillOpacity = 1,
+             radius = 7,
+             color = "black",
+             fillColor = ~pal(year),
+             popup = ~paste("<b>Receiver:</b> ", receiver_id, "<br>", 
+                           "<b>Owner:</b> ",owner_organization, "<br>",
+                           "<b>Year lost:</b> ", year, 
+                           "<br>", "<b>Ac. proj. code:</b> ", acoustic_project_code,
+                           "<br>", "<b>Station:</b> ", station_name),
+             group = "2023") %>% #label = ~paste(comments)
   
   # add-ons
   leaflet.extras::addFullscreenControl() %>%
   leafem::addMouseCoordinates() %>%
-  addScaleBar(position = "bottomright",
+  addScaleBar(position = "bottomleft",
               options = scaleBarOptions(
                 maxWidth = 150,
               imperial = FALSE)) %>%
   addControl( html = north.arrow.icon,
-              position = "bottomright",
-              className = "fieldset {border: 0;}") # %>%
+              position = "bottomleft",
+              className = "fieldset {border: 0;}") %>%
 
 # layers control
-  # addLayersControl(position = "topright" ,
-  #                  baseGroups = c("OpenStreetMap", "EMODnet bathymetry", "satellite"),
-  #                  overlayGroups = c("receiver areas"), # "receiver stations",
-  #                  options = layersControlOptions(collapsed = FALSE)) #%>%
-  # hideGroup(c("tagging locations", "<span style=color:orange># detections</span>"))
+addLayersControl(position = "topright" ,
+                 # baseGroups = c("OpenStreetMap", "EMODnet bathymetry", "satellite"),
+                 overlayGroups = c("2011", "2012", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023"), # "receiver stations",
+                 options = layersControlOptions(collapsed = FALSE)) %>%
+hideGroup(c("2011", "2012", "2014", "2015", "2016", "2017", "2018", "2019"))
+
 m2
 
-
-
-# m <- leaflet(map_dataset) %>%
-#   addProviderTiles(providers$CartoDB.Positron) %>% # Stadia.AlidadeSmooth,  Stadia.StamenTonerLite,  Esri.WorldGrayCanvas,  CartoDB.PositronNoLabels
-#   addCircles(lng = ~capture_longitude, 
-#              lat = ~capture_latitude, 
-#              weight = 1,
-#              radius = ~n * 500,
-#              color = ~mypal(capture_method),
-#              popup = paste("<b>Location:</b> ", map_dataset$capture_location, "<br>", 
-#                            "<b>Tagged individuals:</b> ", map_dataset$n, "<br>",
-#                            "<b>Capture method:</b> ", map_dataset$capture_method))
-# m
 ```
 
 
-```{r leaflet tests}
-# NORTH ARROW
-# load necessary packages
-library( leaflet )
-
-#old url: http://ian.umces.edu/imagelibrary/albums/userpics/10002/normal_ian-symbol-north-arrow-2.png
-# north arrow icon url
-north.arrow.icon <- 
-  "<img src='https://www.clipartbest.com/cliparts/yTo/Lgr/yToLgryGc.png' style='width:40px;height:50px;'>"
-
-# make map
-leaflet() %>%
-  addTiles() %>%
-  setView( lng = -87.567215
-           , lat = 41.822582
-           , zoom = 11 ) %>%
-  setMaxBounds( lng1 = -87.94011
-                , lat1 = 41.64454
-                , lng2 = -87.52414
-                , lat2 = 42.02304 ) %>%
-  addControl( html = north.arrow.icon,
-              position = "topright",
-              className = "fieldset {border: 0;}") %>%
-  addControl(icon_tag,
-             position = "bottomleft")
-
-# ICONS IN LEGEND
-library(leaflet)
-
-IconSet <- awesomeIconList(
-  "Cruise Ship"   = makeAwesomeIcon(icon= 'glass', markerColor = 'blue', iconColor = 'black', library = "glyphicon"),
-  "Pirate Ship" = makeAwesomeIcon(icon= 'fire', markerColor = 'black', iconColor = 'white', library = "glyphicon")
-)
-
-# Some fake data
-df <- sp::SpatialPointsDataFrame(
-  cbind(
-    (runif(20) - .5) * 10 - 90.620130,  # lng
-    (runif(20) - .5) * 3.8 + 25.638077  # lat
-  ),
-  data.frame(type = factor(
-    ifelse(runif(20) > 0.75, "Pirate Ship", "Cruise Ship"),
-    c("Cruise Ship", "Pirate Ship")
-  ))
-)
-
-# group names:
-groups <- c("Cruise Ship" <- "<div style='position: relative; display: inline-block' class='awesome-marker-icon-blue awesome-marker'><i class='glyphicon glyphicon-glass icon-black '></i></div>Cruise Ship",
-            "Pirate Ship" <- "<div style='position: relative; display: inline-block' class='awesome-marker-icon-black awesome-marker'><i class='glyphicon glyphicon-fire icon-white '></i></div>Pirate Ship")
+## Lost receivers per year {.tabset}
 
 
-leaflet(df) %>% addTiles() %>%
-  addAwesomeMarkers(icon = ~IconSet[type], group=~groups[type]) %>% 
-  addLayersControl(                                                                                                           
-    overlayGroups = groups,
-    options = layersControlOptions(collapsed = FALSE)
+<!-- - Details of the receivers lost since 2019 are displayed in the following (*can be extended to earlier years, too, of course*). -->
+
+- Many receivers don't have a `deploy_date_time` and/or a `acoustic_project_code`. Those are listed in the tab **NA**.
+
+
+```{r tablegeneration, results='asis', include=FALSE}
+
+unique_years <- distinct(receivers_lost, year)$year
+
+generate_table_for_year <- function(year) {
+  # df <- receivers_lost %>% filter(year == year)
+  table_id <- glue::glue("tablelostreceivers-{year}")
+  
+  content <- glue::glue(
+    "### {year}\n\n",
+    # "```\n",
+    "```{{r {table_id}}}\n\n",
+    "DT::datatable(receivers_lost %>% filter(year == {year}),\n",
+    "  rownames = F,\n",
+    "  filter = 'bottom',\n",
+    "  extension = 'Buttons',\n",
+    "  options = list(\n",
+    "    pageLength = 15,\n",
+    "    dom = 'Bfrtip',\n",
+    "    buttons = c('pdf', 'csv', 'excel', 'print','copy'),\n",
+    "    columnDefs = list(list(className = 'dt-center', targets = '_all'))))\n\n",
+    # "  )\n\n",
+    # "{year}\n\n",
+    # "```\n",
+    "```\n\n\n"
   )
+  
+  return(content)
+}
+
+# walk(unique_years, ~cat(generate_table_for_year(.x)))
+```
+
+### 2011
+
+```{r tablelostreceivers-2011}
+
+DT::datatable(receivers_lost %>% filter(year == 2011),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2012
+
+```{r tablelostreceivers-2012}
+
+DT::datatable(receivers_lost %>% filter(year == 2012),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
 ```
 
 
+### 2014
+
+```{r tablelostreceivers-2014}
+
+DT::datatable(receivers_lost %>% filter(year == 2014),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2015
+
+```{r tablelostreceivers-2015}
+
+DT::datatable(receivers_lost %>% filter(year == 2015),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
 
 
+### 2016
+
+```{r tablelostreceivers-2016}
+
+DT::datatable(receivers_lost %>% filter(year == 2016),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2017
+
+```{r tablelostreceivers-2017}
+
+DT::datatable(receivers_lost %>% filter(year == 2017),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2018
+
+```{r tablelostreceivers-2018}
+
+DT::datatable(receivers_lost %>% filter(year == 2018),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2019
+
+```{r tablelostreceivers-2019}
+
+DT::datatable(receivers_lost %>% filter(year == 2019),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2020
+
+```{r tablelostreceivers-2020}
+
+DT::datatable(receivers_lost %>% filter(year == 2020),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2021
+
+```{r tablelostreceivers-2021}
+
+DT::datatable(receivers_lost %>% filter(year == 2021),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2022
+
+```{r tablelostreceivers-2022}
+
+DT::datatable(receivers_lost %>% filter(year == 2022),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+### 2023
+
+```{r tablelostreceivers-2023}
+
+DT::datatable(receivers_lost %>% filter(year == 2023),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
+
+
+### NA
+
+```{r tablelostreceivers-NA}
+
+DT::datatable(receivers_lost %>% filter(year %>% is.na()),
+  rownames = F,
+  filter = 'bottom',
+  extension = 'Buttons',
+  options = list(
+    pageLength = 15,
+    dom = 'Bfrtip',
+    buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+    columnDefs = list(list(className = 'dt-center', targets = '_all'))))
+
+```
 
 
