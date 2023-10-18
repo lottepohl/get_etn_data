@@ -1,7 +1,8 @@
 ---
-title: "STRAITS Annual tagging report"
-author: "Claudia Meneses"
-date: "11/10/2023"
+title: "Receiver report"
+subtitle: "maintained and lost receivers, 2012 to 2023"
+author: "Lotte Pohl"
+date: "18/10/2023"
 output: html_document
 editor_options: 
   chunk_output_type: console
