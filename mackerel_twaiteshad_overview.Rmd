@@ -27,12 +27,10 @@ library(mregions2)
 
 # data wrangling
 library(readr)
-library(tidyverse)
 library(lubridate)
 library(dplyr)
 library(lubridate)
 library(utils)
-library(tidyverse)
 library(sf)
 
 # maps
