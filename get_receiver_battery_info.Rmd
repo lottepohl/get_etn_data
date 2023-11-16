@@ -1,8 +1,10 @@
 ---
-title: "Active Receiver Deployments and Maintenance Planning"
+title: "Acoustic Deployments Overview"
 # subtitle: "receiver readout September, 2023"
 output:
   flexdashboard::flex_dashboard:
+    # navbar:
+    #   - { title: "Receiver maintenance", href: "https://example.com/about", align: left }
     source_code: embed
     orientation: rows
     horizontal_layout: fill
@@ -18,7 +20,7 @@ editor_options:
 knitr::opts_chunk$set(echo = F, warnings = F)
 
 # Libraries 
-
+library(flexdashboard)
 # library(devtools)
 # devtools::install_github("inbo/etn")
 library(etn)
@@ -50,8 +52,11 @@ BPNS <- mregions2::gaz_search(3293) %>% mregions2::gaz_geometry()
 ```
 
 ```{css, echo=FALSE}
-p {
-  font-size: 15px;
+# p {
+#   font-size: 15px;
+# }
+.small {
+  zoom: 75%;
 }
 # .zoom
 # {
@@ -221,36 +226,261 @@ current_deployments <- current_deployments %>%
                                               1, 
                                               0),
                 colour = ifelse(needs_battery_change == 1, 
-                                "orange", ##F9938E
-                                "darkblue"), ##90BF87
-                colour = colour %>% tidyr::replace_na('darkgrey')) %>% 
+                                'orange', ##F9938E
+                                '#00639E'), #38A9DC
+                colour = colour %>% tidyr::replace_na('#303030')) %>% 
   dplyr::arrange(desc(needs_battery_change))
 
   
 ```
 
-# Acoustic Deployments quality check
+<!-- Things to make interactive: -->
+<!-- - acoustic project code -->
+<!-- - cutoff date for old deployments -->
+<!-- - date of battery estimated end date fro maintenance -->
 
-> Was all deployment data correctly uploaded at the ETN database? 
+# About
 
-The following tables show the currently open deployments according to different categories:
+Row {data-height=200}
+------------------------------------
 
-  1. Receivers are lost or deployment is not active anymore
+### active deployments
+
+```{r}
+num_deployments <- current_deployments %>% nrow()
+
+flexdashboard::valueBox(num_deployments,
+                        caption = "receivers are currently deployed",
+                        icon = "fa-anchor",
+                        color = 'lightgray')
+```
+
+### deployments that need manual check
+
+```{r}
+num_receivers_manualcheck <- 
+  current_deployments %>%
+    dplyr::filter(needs_battery_change %>% is.na()) %>%
+    nrow()
+
+flexdashboard::gauge(value = num_receivers_manualcheck,
+                     min = 0, max = num_deployments, 
+                     gaugeSectors(success = c(0, (num_deployments/3)), # show a warning color when 2/3 of currently active receivers need change soon
+                                  warning = c((num_deployments/3), 2*(num_deployments/3)),
+                                  danger = c(2*(num_deployments/3), num_deployments),
+                                  colors = c("black", "darkgrey", "lightgrey")),
+                     abbreviateDecimals = 0)
+
+# flexdashboard::valueBox(num_receivers_manualcheck,
+#                         caption = "deployments need manual updating on the ETN platform",
+#                         icon = "fa-user-check",
+#                         colour = current_deployments %>% 
+#                             dplyr::filter(needs_battery_change %>% is.na()) %>% 
+#                             dplyr::select(colour) %>% 
+#                                    unique() %>% 
+#                                    pull())
+```
+
+### receivers requiring maintenance
+
+```{r}
+num_receivers_batterychange <- 
+  current_deployments %>%
+    dplyr::filter(needs_battery_change == 1) %>%
+    nrow()
+
+# gauge showing how many receivers require battery change
+flexdashboard::gauge(value = num_receivers_batterychange,
+                     min = 0, max = num_deployments, 
+                     gaugeSectors(success = c(0, (num_deployments/3)), # show a warning color when 2/3 of currently active receivers need change soon
+                                  warning = c((num_deployments/3), 2*(num_deployments/3)),
+                                  danger = c(2*(num_deployments/3), num_deployments),
+                                  colors = c("black", "darkgrey", "lightgrey")),
+                     abbreviateDecimals = 0)
+
+# flexdashboard::valueBox(num_receivers_batterychange,
+#                         caption = "receivers require a battery change",
+#                         icon = "fa-gears")
+```
+
+
+
+Row {data-height=800}
+------------------------------------
+
+### Quick info {data-width=250}
+
+This dashboard gives an overview on acoustic deployments in a specific acoustic project.
+
+It helps to:
+
+* Identify deployments with missing information &rarr; page *Deployments requiring QC*
+* Get a visual overview of current receiver deployments &rarr; page *Map*
+* plan receivers maintenance operations &rarr; page *Table with receiver info*
+
+
+### Map {data-width=750}
+
+
+```{r receivermap, out.width="100%", fig.align = 'center', echo=FALSE}
+
+# ICONS
+
+## North Arrow
+north.arrow.icon <-
+  "<img src='https://www.clipartbest.com/cliparts/yTo/Lgr/yToLgryGc.png' style='width:40px;height:50px;'>"
+
+## Anchor icon for deployments
+icon_anchor <- leaflet::makeAwesomeIcon(
+  icon = "anchor",
+  iconColor = 'lightgray',
+  markerColor =  ifelse(current_deployments$needs_battery_change %>% is.na(), 'black', 
+                     ifelse(current_deployments$needs_battery_change == 1, 'orange', 'darkblue')),
+  library = "fa",
+  squareMarker = F
+  # ,spin = T
+)
+
+receiver_map <- 
+  leaflet() %>% #height=500, width=1100 
+  addTiles() %>%
+  addPolygons(data = BPNS, color = "darkgrey",
+              weight = 2,
+              opacity = 1.0,
+              fillOpacity = 0) %>%
+
+    addAwesomeMarkers(data = current_deployments,
+                   icon = icon_anchor,
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   # radius = 10,
+                   # opacity = 1,
+                   # color = "black",
+                   # weight = 1,
+                   # fillOpacity = 1,
+                   # fillColor = ~colour,
+                   popup = ~paste(
+                           "<b>Station:</b> ", station_name, "<br>",
+                           "<b>Receiver id:</b> ", receiver_id, "<br>",
+                           "<b>Deployment id:</b> ", deployment_id, "<br>",
+                           "<b>Battery installation:</b> ",battery_installation_date, "<br>",
+                           "<b>Estimated battery end:</b> ", battery_estimated_end_date, "<br>", #
+                           "<b>Receiver battery life (months):</b> ", battery_estimated_life_months, "<br>",
+                           "<b>Battery status:</b> ", ifelse(needs_battery_change %>% is.na(), "Missing information",
+                                                             ifelse(needs_battery_change == 1, "Needs battery change", "No battery change needed"))
+                           ),
+                     group = "zoom to data",
+                   label = ~paste0("Station: ", station_name)
+                   ) %>%
   
-  2. Battery installation date is empty
-  
-  3. Battery estimated end date is empty
-  
-To aid with manual data entry on the ETN platform, information on the previous deployment of each receiver is given: The previous deployment and recover dates, and the battery installation and estimated end dates.
+  addLegend(position = "topright", opacity = 1,
+            colors = current_deployments$colour %>% unique(), labels = c("battery needs change", "battery is OK", "missing information")) %>%
+  leafem::addMouseCoordinates() %>%
+  leaflet::addScaleBar(position = "topright",
+              options = scaleBarOptions(
+              maxWidth = 150,
+              imperial = FALSE)) %>%
+  leaflet::addControl( html = north.arrow.icon,
+              position = "topleft",
+              className = "fieldset {border: 0;}") %>%
+  leafem::addHomeButton(group = "zoom to data",
+                        position = "topleft")
+
+receiver_map
 
 
-<!-- {.tabset .tabset-fade} -->
-Row {.tabset .tabset-fade}
+```
+
+> When you hover over the map, the fields `battery_installation_date` and `battery_estimated_end_date` are displayed. By clicking on a receiver, the fields `station_name`, `receiver_id`, `deploy_latitude` and `deploy_longitude` are displayed.
+
+<!-- Row {data-height=150} -->
+<!-- ------------------------------------ -->
+
+<!-- This data overview was created on behalf of the European Tracking Network (ETN) -->
+
+
+# Deployments requiring QC
+
+Row {data-height=200}
 -------------------------------------
 
-### 1. Lost receivers
+<!-- ### *Was all deployment data correctly uploaded to the ETN database?* -->
 
-For the following deployments, closing the deployment and/or updating the receiver status is advised.
+
+<!-- The following tables show the currently open deployments according to different categories: -->
+
+<!-- *1.* Receivers are **lost** or deployment is not active anymore | *2.* Battery **installation** date is empty | *3.* Battery estimated **end** date is empty -->
+
+
+### deployments that need manual check
+
+```{r}
+flexdashboard::valueBox(num_receivers_manualcheck,
+                        caption = "deployments need a manual update <br> on the ETN portal, divided into 3 categories",
+                        icon = "fa-circle-exclamation",
+                        color = 'lightgray')
+# 
+# caption = "deployments need a manual update on the ETN portal, because: <br>
+#                                    <b>1.</b> Receivers are <b>lost</b> or deployment is not active anymore <br>
+#                                    <b>2.</b> Battery <b>installation</b> date is empty/wrong <br>
+#                                    <b>3.</b> Battery <b>estimated end</b> date is empty/wrong <br>",
+```
+
+### 1. receivers are **lost** or deployment is not active anymore *(Category 1)*
+
+```{r}
+num_deployments_1 <- 
+  current_deployments_1 %>%
+    nrow()
+
+flexdashboard::gauge(value = num_deployments_1,
+                     min = 0, max = num_receivers_manualcheck,
+                     gaugeSectors(success = c(0, (num_receivers_manualcheck/3)), # show a warning color when 2/3 of currently active receivers need change soon
+                                  warning = c((num_receivers_manualcheck/3), 2*(num_receivers_manualcheck/3)),
+                                  danger = c(2*(num_receivers_manualcheck/3), num_receivers_manualcheck),
+                                  colors = c("black", "darkgrey", "lightgrey")),
+                     abbreviateDecimals = 0)
+```
+
+### 2. deployments with empty/wrong battery **installation** date *(Category 2)*
+
+```{r}
+num_deployments_2 <- 
+  current_deployments_2 %>%
+    nrow()
+
+flexdashboard::gauge(value = num_deployments_2,
+                     min = 0, max = num_receivers_manualcheck, 
+                     gaugeSectors(success = c(0, (num_receivers_manualcheck/3)), # show a warning color when 2/3 of currently active receivers need change soon
+                                  warning = c((num_receivers_manualcheck/3), 2*(num_receivers_manualcheck/3)),
+                                  danger = c(2*(num_receivers_manualcheck/3), num_receivers_manualcheck),
+                                  colors = c("black", "darkgrey", "lightgrey")),
+                     abbreviateDecimals = 0)
+```
+
+### 3. deployments with empty/wrong battery **estimated end** date *(Category 3)*
+
+```{r}
+num_deployments_3 <- 
+  current_deployments_3 %>%
+    nrow()
+
+flexdashboard::gauge(value = num_deployments_3,
+                     min = 0, max = num_receivers_manualcheck,
+                     gaugeSectors(success = c(0, (num_receivers_manualcheck/3)), # show a warning color when 2/3 of currently active receivers need change soon
+                                  warning = c((num_receivers_manualcheck/3), 2*(num_receivers_manualcheck/3)),
+                                  danger = c(2*(num_receivers_manualcheck/3), num_receivers_manualcheck),
+                                  colors = c("black", "darkgrey", "lightgrey")),
+                     abbreviateDecimals = 0)
+```
+
+  
+Row {.tabset .tabset-fade data-height=800}
+-------------------------------------
+
+### 1. Lost receivers {#receivers-lost}
+
+Advised action for the following `r current_deployments_1 %>% nrow()` deployments: **closing the deployment** and/or updating the receiver status.
 
 ```{r table QC1}
 DT::datatable(current_deployments_1 %>%
@@ -275,9 +505,11 @@ DT::datatable(current_deployments_1 %>%
 <!-- Row -->
 <!-- ------------------------------------- -->
 
-### 2. No battery installation date
+### 2. No battery installation date {#receivers-nobatterystart}
 
-For the following deployments, the `battery_installation_date` was either not set or lies in the future. It is advised to update the `battery_installation_date` from the previous deployment, if given there. 
+For the following `r current_deployments_2 %>% nrow()` deployments, the `battery_installation_date` was either not set or lies in the future.
+
+Advised action: **Update the `battery_installation_date`** from the previous deployment, if given there. 
 
 ```{r table QC2}
 DT::datatable(current_deployments_2 %>%
@@ -306,9 +538,11 @@ DT::datatable(current_deployments_2 %>%
 <!-- Row -->
 <!-- ------------------------------------- -->
 
-### 3. No battery estimated end date
+### 3. No battery estimated end date {#receivers-nobatteryend}
 
-For the following deployments, the `battery_estimated_end_date` is missing or lies in the past. It is advised to be set according to the `battery_installation_date` and the `battery_estimated_life`.
+For the following `r current_deployments_3 %>% nrow()` deployments, the `battery_estimated_end_date` is missing or lies in the past.
+
+Advised action: **Update the `battery_estimated_end_date`** according to the `battery_installation_date` and the `battery_estimated_life`.
 
 ```{r table QC3}
 DT::datatable(current_deployments_3 %>%
@@ -333,66 +567,6 @@ DT::datatable(current_deployments_3 %>%
   # backgroundColor = styleEqual(c(0, 1), c('#90BF87', '#F9938E')))
 
 ```
-
-
-# Map
-
-```{r receivermap, out.width="100%", fig.align = 'center', echo=FALSE}
-
-## North Arrow
-north.arrow.icon <-
-  "<img src='https://www.clipartbest.com/cliparts/yTo/Lgr/yToLgryGc.png' style='width:40px;height:50px;'>"
-
-receiver_map <- 
-  leaflet() %>% #height=500, width=1100 
-  addTiles() %>%
-  addPolygons(data = BPNS, color = "darkgrey",
-              weight = 2,
-              opacity = 1.0,
-              fillOpacity = 0) %>%
-  
-  addCircleMarkers(data = current_deployments,
-                   lat = ~deploy_latitude,
-                   lng = ~deploy_longitude,
-                   radius = 10,
-                   opacity = 1,
-                   color = "black",
-                   weight = 1,
-                   fillOpacity = 1,
-                   fillColor = ~colour,
-                   popup = ~paste(
-                           "<br>", "<b>Station:</b> ", station_name, "<br>",
-                           "<b>Receiver id:</b> ", receiver_id, "<br>",
-                           "<b>Deployment id:</b> ", deployment_id, "<br>",
-                           "<b>Battery installation:</b> ",battery_installation_date, "<br>",
-                           "<b>Estimated battery end:</b> ", battery_estimated_end_date, "<br>", #
-                           "<b>Receiver battery life (months):</b> ", battery_estimated_life_months
-                           ),
-                     group = "zoom to data",
-                     # ~paste0("station: ", station_name, 
-                     #               ", id: ", receiver_id,
-                     #               ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", 
-                     #         deploy_longitude  %>% round(digits = 2)),
-                   label = ~paste0("Station: ", station_name)
-  ) %>%
-  addLegend(position = "topright", opacity = 1,
-            colors = current_deployments$colour %>% unique(), labels = c("battery needs change", "battery is OK", "missing information")) %>%
-  leafem::addMouseCoordinates() %>%
-  leaflet::addScaleBar(position = "topright",
-              options = scaleBarOptions(
-              maxWidth = 150,
-              imperial = FALSE)) %>%
-  leaflet::addControl( html = north.arrow.icon,
-              position = "topleft",
-              className = "fieldset {border: 0;}") %>%
-  leafem::addHomeButton(group = "zoom to data",
-                        position = "topleft")
-
-receiver_map
-
-```
-
-> When you hover over the map, the fields `battery_installation_date` and `battery_estimated_end_date` are displayed. By clicking on a receiver, the fields `station_name`, `receiver_id`, `deploy_latitude` and `deploy_longitude` are displayed.
 
 <!-- # Table -->
 
@@ -466,7 +640,9 @@ DT::datatable(current_deployments %>%
   fontWeight = "bold") %>%
   formatStyle(
   'needs_battery_change',
-  backgroundColor = styleEqual(c(0, 1, NA), c('#90BF87', '#F9938E', 'black')))
+  color = styleEqual(c(1, 0), c('black', 'white')),
+  backgroundColor = styleEqual(c(0, 1, NA), c('#00639E', 'orange', '#303030')))
 
 ```
 
+> To aid with manual data entry in the ETN portal, information on the previous deployment is given: Deployment and recover dates, the battery installation and estimated end dates.
