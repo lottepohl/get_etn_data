@@ -1,14 +1,21 @@
 ---
-title: "Active Receier Deployments in the Western Scheldt"
-subtitle: "receiver readout September, 2023"
-output: html_document
+title: "Active Receiver Deployments and Maintenance Planning"
+# subtitle: "receiver readout September, 2023"
+output:
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    orientation: rows
+    horizontal_layout: fill
+    theme: 
+      version: 4
+      bootswatch: litera
 editor_options: 
   chunk_output_type: console
 ---
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(echo = F, warnings = F)
 
 # Libraries 
 
@@ -19,26 +26,66 @@ library(dplyr)
 library(lubridate)
 library(utils)
 library(leaflet)
-library(tidyverse)
 library(knitr)
 library(kableExtra)
 library(leafem)
 library(DT) # for interactive tables
+options(DT.options = list(
+
+                          scrollY="500px",
+
+                          scrollX="200px", 
+
+                          # pageLength = 5, 
+
+                          autoWidth = TRUE))
+library(mregions2)
 
 # database connection
 
 con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
 
+BPNS <- mregions2::gaz_search(3293) %>% mregions2::gaz_geometry()
+
 ```
+
+```{css, echo=FALSE}
+p {
+  font-size: 15px;
+}
+# .zoom
+# {
+#     zoom: 200%;
+# }
+```
+
 
 <!-- **Database Query:** -->
 
 ```{r get deployments, include=FALSE}
 
-# get currently active deployments IN THE 'ws1' and 'ws2' projects
+# get currently active deployments
 current_deployments <- etn::get_acoustic_deployments(con, 
-                                                  acoustic_project_code = c("ws1", "ws2"),
+                                                  acoustic_project_code = "bpns", # c("ws1", "ws2")
                                                   open_only = TRUE) 
+
+# get information on receivers currently deployed
+current_receivers <- etn::get_acoustic_receivers(con, receiver_id = current_deployments$receiver_id)
+
+# get last deployment of each of the receivers currently deployed
+last_deployments <- 
+  etn::get_acoustic_deployments(con, receiver_id = current_deployments$receiver_id,
+                                open_only = FALSE) %>%
+    dplyr::filter(!deployment_id %in% current_deployments$deployment_id) %>% #remove currently open deployments (because we want the previous deployments)
+    dplyr::group_by(receiver_id) %>%
+    dplyr::summarise(previous_recover_date_time = recover_date_time %>% max(na.rm = T), # save other relevant columns at the last deployment date time
+                     # id_1 = deployment_id[1],
+                     # id_2 = deployment_id[2],
+                     previous_deploy_date_time = deploy_date_time[which.max(recover_date_time)],
+                     previous_battery_installation_date = battery_installation_date[which.max(recover_date_time)],
+                     previous_battery_estimated_end_date = battery_estimated_end_date[which.max(recover_date_time)]
+                     ,previous_deployment_id = deployment_id[which.max(recover_date_time)]
+                     )
 ```
 
 <!-- # Some info about the deployments -->
@@ -78,122 +125,274 @@ current_deployments <- etn::get_acoustic_deployments(con,
 
 # new column to indicate if battery needs to be changed
 
-current_deployments <- current_deployments %>%
-  dplyr::mutate(needs_battery_change = NA,
-                colour = "black")
+current_deployments <- 
+  current_deployments %>%
+    dplyr::mutate(needs_battery_change = NA,
+                colour = "black") %>%
+    dplyr::select(!starts_with(c("ar", "log", "sync"))) %>%
+    dplyr::left_join(current_receivers %>% # add information about the acoustic receivers into the deployment table
+                     dplyr::select(!starts_with("ar")),
+                    by = join_by(receiver_id)) %>%
+    dplyr::left_join(last_deployments,
+                     by = join_by(receiver_id)) %>%
+    dplyr::mutate(across(where(is.POSIXct), ~ format(., "%Y-%m-%d")),
+                  battery_estimated_life_months = battery_estimated_life %>% as.integer(),
+                  battery_estimated_life_months = (battery_estimated_life_months / 30) %>% round(digits = 0)
+                  ) #change all date formats to show only year-month-day
 
+
+
+# --------------------OLD----------------------------
 # algorithm to clean data
 
-# bug right now: POSIXt format is lost during 1st and 2nd check
+# # bug right now: POSIXt format is lost during 1st and 2nd check
 # current_deployments_clean <- current_deployments %>%
 #   # first check: is battery start empty, battery end not, and battery end lies in the past? -> set battery end as battery start
 #   dplyr::mutate(battery_installation_date = ifelse(
 #     is.na(battery_installation_date) & !is.na(battery_estimated_end_date) & (battery_estimated_end_date < (Sys.Date())),
 #     battery_installation_date, #battery_estimated_end_date,
-#     battery_installation_date) 
+#     battery_installation_date)
 #     ) #%>%
 #   # second check: same as first check, but then set battery end as battery start + 13 months
 #   dplyr::mutate(battery_estimated_end_date = ifelse(
 #     is.na(battery_installation_date) & !is.na(battery_estimated_end_date) & (battery_estimated_end_date < (Sys.Date() %>% as.POSIXct())),
 #     battery_installation_date + months(13),
-#     battery_estimated_end_date) 
+#     battery_estimated_end_date)
 #     )
 
 # current_deployments_clean %>% dplyr::select(battery_installation_date) %>% unique()
 # current_deployments_clean %>% dplyr::select(battery_estimated_end_date) %>% unique()
 # current_deployments$battery_installation_date %>% unique()
-  
-  
+
+# ----------------------------------------------------  
+
+# QC ALGORITHM
+
+# this algorithm will split the list of currently active deployments into deployments that 
+# 0) seem to contain correct info: deployment_date_time and battery_installation_date both lie in the past, while battery_estimated_end_date lies in the future
+# 1) are most likely not active anymore and should be closed (if deploy_date_time more than 2yrs ago (cutoff date realistic?), then check with receiver status: is receiver lost? Either way probably close deployment...)
+# 2) do not have a battery installation date and no correct estimated end date (-> check previous deployment of each receiver, and if battery installation date exists and is less than 13 months ago, take the same battery installation date)
+# 3) have no battery installation date but a correct battery estimated end date (-> if battery_end_date existent & lies in future, take battery_end_date - 13 months)
+# 4) have a battery installation date that is in the future (-> check if battery_end_date is there & in the future: if not, set battery_installation_date as battery_estimated_end_date)
+# 5) have a battery estimated end date that is the same as the battery installation date, and lies in the past (-> set battery estimated end date as battery installation date + battery_lifetime_months)
+cutoff_year_closed_deployment <- 2
+
+# QC check 0): all battery info entered correctly
+current_deployments_0 <- 
+  current_deployments %>%
+    dplyr::filter(deploy_date_time < Sys.Date(),
+                  battery_installation_date < Sys.Date(),
+                  battery_estimated_end_date > Sys.Date())
+
+# QC check 1): non-active deployments
+current_deployments_1 <- 
+  current_deployments %>%
+    dplyr::filter(deploy_date_time < (Sys.Date() - lubridate::years(cutoff_year_closed_deployment)))
+
+# # QC check 2): battery installation date was not given for the new deployment (-> suggest to take battery installation date from last deployment of each receiver)
+# current_deployments_2 <- 
+#   current_deployments %>%
+#     dplyr::filter(battery_installation_date %>% is.na(),
+#                   battery_estimated_end_date < Sys.Date(),
+#                   deploy_date_time > (Sys.Date() - lubridate::years(cutoff_year_closed_deployment)))
+
+# QC check 2): battery installation date was not given or in the future (-> check previous deployment of each receiver)
+current_deployments_2 <- 
+  current_deployments %>%
+    dplyr::filter(battery_installation_date %>% is.na() |
+                  battery_installation_date > Sys.Date(),
+                  deploy_date_time > (Sys.Date() - lubridate::years(cutoff_year_closed_deployment))) # filter out deployments that are presumably closed or lost
+
+# QC check 3: battery estimated end date not set or wrong
+current_deployments_3 <- 
+  current_deployments %>%
+    dplyr::filter(battery_estimated_end_date %>% is.na() |
+                  battery_estimated_end_date < Sys.Date(),
+                  deploy_date_time > (Sys.Date() - lubridate::years(cutoff_year_closed_deployment))) # filter out deployments that are presumably closed or lost
+
+
   
 # quick and dirty algorithm
   
-today <- "2023-09-25" %>% as.POSIXct(tz = "CET")
-cutoff_date <- today + months(3)
-# class(today + months(3)) # check class of cutoff date
+cutoff_date <- Sys.Date() + months(3)
   
 current_deployments <- current_deployments %>%
   dplyr::mutate(needs_battery_change = ifelse(battery_estimated_end_date < cutoff_date, 
                                               1, 
                                               0),
-                colour = ifelse(needs_battery_change == 1, "#F9938E", "#90BF87")) %>%
+                colour = ifelse(needs_battery_change == 1, 
+                                "orange", ##F9938E
+                                "darkblue"), ##90BF87
+                colour = colour %>% tidyr::replace_na('darkgrey')) %>% 
   dplyr::arrange(desc(needs_battery_change))
 
   
 ```
 
+# Acoustic Deployments quality check
+
+> Was all deployment data correctly uploaded at the ETN database? 
+
+The following tables show the currently open deployments according to different categories:
+
+  1. Receivers are lost or deployment is not active anymore
+  
+  2. Battery installation date is empty
+  
+  3. Battery estimated end date is empty
+  
+To aid with manual data entry on the ETN platform, information on the previous deployment of each receiver is given: The previous deployment and recover dates, and the battery installation and estimated end dates.
+
+
+<!-- {.tabset .tabset-fade} -->
+Row {.tabset .tabset-fade}
+-------------------------------------
+
+### 1. Lost receivers
+
+For the following deployments, closing the deployment and/or updating the receiver status is advised.
+
+```{r table QC1}
+DT::datatable(current_deployments_1 %>%
+              dplyr::select(deployment_id, status, battery_installation_date, battery_estimated_end_date, deploy_date_time, 
+                             station_name, deploy_latitude, deploy_longitude, acoustic_project_code, receiver_id),
+              rownames = F,
+              filter = 'bottom', 
+              extension = 'Buttons',
+              options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                pageLength = current_deployments_1 %>% nrow(),
+                autoWidth = TRUE, 
+                columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              ) %>%
+  formatStyle(
+  c('receiver_id', 'battery_estimated_end_date'),
+  fontWeight = "bold")
+
+```
+
+<!-- Row -->
+<!-- ------------------------------------- -->
+
+### 2. No battery installation date
+
+For the following deployments, the `battery_installation_date` was either not set or lies in the future. It is advised to update the `battery_installation_date` from the previous deployment, if given there. 
+
+```{r table QC2}
+DT::datatable(current_deployments_2 %>%
+              dplyr::select(deployment_id, battery_installation_date, battery_estimated_end_date, deploy_date_time, 
+                             previous_battery_installation_date, previous_recover_date_time,
+                             station_name, deploy_latitude, deploy_longitude, acoustic_project_code, receiver_id, previous_deployment_id),
+              rownames = F,
+              filter = 'bottom', 
+              extension = 'Buttons',
+              options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                pageLength = current_deployments_2 %>% nrow(),
+                autoWidth = TRUE, 
+                columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              ) #%>%
+  # formatStyle(
+  # c('receiver_id', 'battery_estimated_end_date'),
+  # fontWeight = "bold") %>%
+  # formatStyle(
+  # 'needs_battery_change',
+  # backgroundColor = styleEqual(c(0, 1), c('#90BF87', '#F9938E')))
+
+```
+
+<!-- Row -->
+<!-- ------------------------------------- -->
+
+### 3. No battery estimated end date
+
+For the following deployments, the `battery_estimated_end_date` is missing or lies in the past. It is advised to be set according to the `battery_installation_date` and the `battery_estimated_life`.
+
+```{r table QC3}
+DT::datatable(current_deployments_3 %>%
+              dplyr::select(deployment_id, battery_installation_date, battery_estimated_end_date, deploy_date_time, 
+                             previous_battery_installation_date, previous_recover_date_time,
+                             station_name, deploy_latitude, deploy_longitude, acoustic_project_code, receiver_id, previous_deployment_id),
+              rownames = F,
+              filter = 'bottom', 
+              extension = 'Buttons',
+              options = list(
+                dom = 'Bfrtip',
+                buttons = c('pdf', 'csv', 'excel', 'print','copy'),
+                pageLength = current_deployments_3 %>% nrow(),
+                autoWidth = TRUE, 
+                columnDefs = list(list(className = 'dt-center', targets = '_all')))
+              ) #%>%
+  # formatStyle(
+  # c('receiver_id', 'battery_estimated_end_date'),
+  # fontWeight = "bold") %>%
+  # formatStyle(
+  # 'needs_battery_change',
+  # backgroundColor = styleEqual(c(0, 1), c('#90BF87', '#F9938E')))
+
+```
+
+
 # Map
 
-
-When you hover over the map, the fields `battery_installation_date` and `battery_estimated_end_date` are displayed. By clicking on a receiver, the fields `station_name`, `receiver_id`, `deploy_latitude` and `deploy_longitude` are displayed.
 ```{r receivermap, out.width="100%", fig.align = 'center', echo=FALSE}
 
-receiver_map <- leaflet(height=500, width=1100) %>% 
+## North Arrow
+north.arrow.icon <-
+  "<img src='https://www.clipartbest.com/cliparts/yTo/Lgr/yToLgryGc.png' style='width:40px;height:50px;'>"
+
+receiver_map <- 
+  leaflet() %>% #height=500, width=1100 
   addTiles() %>%
+  addPolygons(data = BPNS, color = "darkgrey",
+              weight = 2,
+              opacity = 1.0,
+              fillOpacity = 0) %>%
   
-  # NEED BATTERY CHANGE
-  addCircleMarkers(data = current_deployments %>% dplyr::filter(needs_battery_change == 1),
+  addCircleMarkers(data = current_deployments,
                    lat = ~deploy_latitude,
                    lng = ~deploy_longitude,
-                   radius = 5,
-                   opacity = 0,
-                   fillOpacity = 0.7,
-                   fillColor = "red",
-                   popup = ~paste0("station: ", station_name, 
-                                   ", id: ", receiver_id,
-                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
-                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
-                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
+                   radius = 10,
+                   opacity = 1,
+                   color = "black",
+                   weight = 1,
+                   fillOpacity = 1,
+                   fillColor = ~colour,
+                   popup = ~paste(
+                           "<br>", "<b>Station:</b> ", station_name, "<br>",
+                           "<b>Receiver id:</b> ", receiver_id, "<br>",
+                           "<b>Deployment id:</b> ", deployment_id, "<br>",
+                           "<b>Battery installation:</b> ",battery_installation_date, "<br>",
+                           "<b>Estimated battery end:</b> ", battery_estimated_end_date, "<br>", #
+                           "<b>Receiver battery life (months):</b> ", battery_estimated_life_months
+                           ),
+                     group = "zoom to data",
+                     # ~paste0("station: ", station_name, 
+                     #               ", id: ", receiver_id,
+                     #               ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", 
+                     #         deploy_longitude  %>% round(digits = 2)),
+                   label = ~paste0("Station: ", station_name)
   ) %>%
-  
-  # DON'T NEED BATTERY CHANGE
-  addCircleMarkers(data = current_deployments %>% dplyr::filter(needs_battery_change == 0),
-                   lat = ~deploy_latitude,
-                   lng = ~deploy_longitude,
-                   radius = 5,
-                   opacity = 0,
-                   fillOpacity = 0.7,
-                   fillColor = "green",
-                   popup = ~paste0("station: ", station_name, 
-                                   ", id: ", receiver_id,
-                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
-                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
-                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
-  ) %>%
-  
-  # MISSING INFORMATION
-  addCircleMarkers(data = current_deployments %>% dplyr::filter(is.na(needs_battery_change)),
-                   lat = ~deploy_latitude,
-                   lng = ~deploy_longitude,
-                   radius = 5,
-                   opacity = 0,
-                   fillOpacity = 0.7,
-                   fillColor = "black",
-                   popup = ~paste0("station: ", station_name, 
-                                   ", id: ", receiver_id,
-                                   ", lat: ", deploy_latitude %>% round(digits = 2), ", lng: ", deploy_longitude  %>% round(digits = 2)),
-                   label = ~paste0("battery start: ", battery_installation_date %>% format("%Y-%m-%d"),
-                                   ", battery end: ", battery_estimated_end_date %>% format("%Y-%m-%d"))
-  ) %>%
-  addLegend(position = "bottomleft", opacity = 1,
-            colors = c("red", "green", "black"), labels = c("battery needs change", "battery is OK", "missing information")) %>%
+  addLegend(position = "topright", opacity = 1,
+            colors = current_deployments$colour %>% unique(), labels = c("battery needs change", "battery is OK", "missing information")) %>%
   leafem::addMouseCoordinates() %>%
-  addScaleBar(position = "bottomright",
+  leaflet::addScaleBar(position = "topright",
               options = scaleBarOptions(
-                maxWidth = 150,
-              imperial = FALSE))
+              maxWidth = 150,
+              imperial = FALSE)) %>%
+  leaflet::addControl( html = north.arrow.icon,
+              position = "topleft",
+              className = "fieldset {border: 0;}") %>%
+  leafem::addHomeButton(group = "zoom to data",
+                        position = "topleft")
 
 receiver_map
 
-# stationname, receiverID, lat, long and battery end date
-  # addPolygons(data = windfarms_polygons %>% filter(!status %in% c("Approved", "Planned")),
-  #             color = "red",
-  #             weight = 2,
-  #             opacity = 1,
-  #             fillOpacity = 0.3,
-  #             label = ~paste0("status: ", status, ", country: ", country, ", year: ", year),
-  #             group = "wrecks, OWFs, cables") %>%
-
 ```
+
+> When you hover over the map, the fields `battery_installation_date` and `battery_estimated_end_date` are displayed. By clicking on a receiver, the fields `station_name`, `receiver_id`, `deploy_latitude` and `deploy_longitude` are displayed.
 
 <!-- # Table -->
 
@@ -218,7 +417,7 @@ receiver_map
 
 <!-- ``` -->
 
-# Table
+# Table with receiver info
 
 <!-- interactive table with `DT` package -->
 
@@ -249,15 +448,13 @@ receiver_map
 
 
 DT::datatable(current_deployments %>%
-              dplyr::mutate(deploy_date_time = deploy_date_time %>% format("%Y-%m-%d"),
-                            battery_installation_date = battery_installation_date %>% format("%Y-%m-%d"),
-                            battery_estimated_end_date = battery_estimated_end_date %>% format("%Y-%m-%d")) %>%
-               dplyr::select(receiver_id, needs_battery_change, station_name, deploy_latitude, deploy_longitude, 
+              dplyr::select(receiver_id, needs_battery_change, station_name, deploy_latitude, deploy_longitude, 
                              battery_installation_date, battery_estimated_end_date,  deploy_date_time, acoustic_project_code),
               rownames = F,
               filter = 'bottom', 
               extension = 'Buttons',
               options = list(
+                pageLength = current_deployments %>% nrow(),
                 dom = 'Bfrtip',
                 buttons = c('pdf', 'csv', 'excel', 'print','copy'),
                 pageLength = 10,
@@ -269,7 +466,7 @@ DT::datatable(current_deployments %>%
   fontWeight = "bold") %>%
   formatStyle(
   'needs_battery_change',
-  backgroundColor = styleEqual(c(0, 1), c('#90BF87', '#F9938E')))
+  backgroundColor = styleEqual(c(0, 1, NA), c('#90BF87', '#F9938E', 'black')))
 
 ```
 

@@ -25,12 +25,11 @@ library(knitr)
 
 # data wrangling
 library(readr)
-library(tidyverse)
+# library(tidyverse)
 library(lubridate)
 library(dplyr)
 library(lubridate)
 library(utils)
-library(tidyverse)
 
 # maps
 library(leaflet)
