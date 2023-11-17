@@ -26,7 +26,9 @@ library(flexdashboard)
 library(etn)
 library(dplyr)
 library(lubridate)
+library(crosstalk)
 library(utils)
+library(htmltools)
 library(leaflet)
 library(knitr)
 library(kableExtra)
@@ -68,6 +70,9 @@ BPNS <- mregions2::gaz_search(3293) %>% mregions2::gaz_geometry()
 <!-- **Database Query:** -->
 
 ```{r get deployments, include=FALSE}
+
+# all_deployments_test <- etn::get_acoustic_deployments(open_only = F)
+# all_receivers_test <- etn::get_acoustic_receivers()
 
 # get currently active deployments
 current_deployments <- etn::get_acoustic_deployments(con, 
@@ -194,13 +199,6 @@ current_deployments_1 <-
   current_deployments %>%
     dplyr::filter(deploy_date_time < (Sys.Date() - lubridate::years(cutoff_year_closed_deployment)))
 
-# # QC check 2): battery installation date was not given for the new deployment (-> suggest to take battery installation date from last deployment of each receiver)
-# current_deployments_2 <- 
-#   current_deployments %>%
-#     dplyr::filter(battery_installation_date %>% is.na(),
-#                   battery_estimated_end_date < Sys.Date(),
-#                   deploy_date_time > (Sys.Date() - lubridate::years(cutoff_year_closed_deployment)))
-
 # QC check 2): battery installation date was not given or in the future (-> check previous deployment of each receiver)
 current_deployments_2 <- 
   current_deployments %>%
@@ -241,8 +239,26 @@ current_deployments <- current_deployments %>%
 
 # About
 
-Row {data-height=200}
+Row {data-height=100}
 ------------------------------------
+
+### {data-width=150}
+
+```{r,  out.width = "10%", out.height = "10%"}
+image_link <- function(image,url,...){
+  htmltools::a(
+    target="_blank",
+    href=url,
+    htmltools::img(src=image,...)
+    )
+}
+
+image_link(image = "https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png",
+           url = "https://europeantrackingnetwork.org/en")
+
+# include_graphics("https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png") #static implementation without hyperlink
+```
+
 
 ### active deployments
 
@@ -304,8 +320,7 @@ flexdashboard::gauge(value = num_receivers_batterychange,
 ```
 
 
-
-Row {data-height=800}
+Row {data-height=900}
 ------------------------------------
 
 ### Quick info {data-width=250}
@@ -314,9 +329,15 @@ This dashboard gives an overview on acoustic deployments in a specific acoustic 
 
 It helps to:
 
-* Identify deployments with missing information &rarr; page *Deployments requiring QC*
-* Get a visual overview of current receiver deployments &rarr; page *Map*
-* plan receivers maintenance operations &rarr; page *Table with receiver info*
+* Identify deployments with missing information 
+
+<!-- &rarr; page *Deployments requiring QC* -->
+* Get a visual overview of current receiver deployments 
+
+<!-- &rarr; page *Map* -->
+* plan receivers maintenance operations 
+
+<!-- &rarr; page *Table with receiver info* -->
 
 
 ### Map {data-width=750}
