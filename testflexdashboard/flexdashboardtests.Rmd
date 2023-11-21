@@ -1,10 +1,11 @@
 ---
-title: "Layout tests"
+title: "Flexdahsboard layout demo"
 output:
   flexdashboard::flex_dashboard:
     source_code: embed
     orientation: rows
-    vertical_layout: scroll
+    horizontal_layout: fill
+    vertical_layout: fill
     theme: 
       version: 4
       bootswatch: litera
@@ -12,92 +13,38 @@ editor_options:
   chunk_output_type: console
 ---
 
-Overview
-=====================================
-
-Row {data-height=1000}
--------------------------------------
-    
-### Map
-
-```{r}
-library(leaflet)
-
-leaflet() %>%
-  addTiles()
-```
-
-
-> some info text   
-   
-   
-### Abacus plot
-
-```{r}
-
-leaflet() %>%
-  addTiles()
-
-```   
- 
- 
-> more info text
-
-
-Row
+Inputs {.sidebar}
 -------------------------------------
 
-### Table
-    
-```{r}
-```
+*LifeWatch Logo*
 
 
-Details (acoustic_project_codes)
-=====================================
+**Sample Library**
+
 
 Row {data-height=100}
 -------------------------------------
+    
+### Help and Login
 
-### General Information
 
-- another bullet point text
-- yet another bullet point
-
-  
-Row {data-height=1000}
+Row {data-height=300}
 -------------------------------------
 
-### Map
+### Samples
+    
+```{r}
+```
+    
+Row {data-height=600}
+-------------------------------------
+
+### Station locations
 
 ```{r}
-library(leaflet)
-
-leaflet() %>%
-  addTiles()
 ```
 
+### Plot title
 
-> some info text   
-   
-   
-### Abacus plot
-
-```{r}
-
-leaflet() %>%
-  addTiles()
-
-```   
- 
- 
-> more info text
-
-
-Row
--------------------------------------
-
-### Table
-    
 ```{r}
 ```

@@ -35,9 +35,9 @@ library(leafem) # for extras in leaflet maps
 library(DT) # for interactive tables
 options(DT.options = list(
 
-                          scrollY="500px",
+                          scrollY="200px", #500
 
-                          scrollX="200px", 
+                          scrollX="100px", #200
 
                           # pageLength = 5, 
 
@@ -237,9 +237,9 @@ current_deployments <- current_deployments %>%
 <!-- - cutoff date for old deployments -->
 <!-- - date of battery estimated end date fro maintenance -->
 
-# 1. About
+# 1. Overview {#overview}
 
-Row {data-height=100}
+Row {data-height=80}
 ------------------------------------
 
 ### {#etn-logo data-width=150}
@@ -248,10 +248,28 @@ Row {data-height=100}
 ```{r}
 # htmltools::img(src="https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png")
 
-include_graphics("https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png")
+# include_graphics("https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png") # works
 ```
 <!-- <a href="https://europeantrackingnetwork.org/en" target=_blank> -->
 <!-- <center> </center></a> -->
+
+```{r ETN-logo}
+
+# Image URL
+image_url <- "https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png"
+
+# Hyperlink URL
+hyperlink_url <- "https://europeantrackingnetwork.org/en"
+
+# Combine image and hyperlink within an HTML block
+html_block <- div(
+  img(src = image_url, style = "width:100%; height:auto;"),
+  a(href = hyperlink_url, target = "_blank", "Visit the website")
+)
+
+# Display the HTML block
+html_block
+```
 
 
 <!-- ```{r,  out.width = "10%", out.height = "10%"} -->
@@ -334,32 +352,26 @@ flexdashboard::gauge(value = num_receivers_batterychange,
 ```
 
 
-Row {data-height=900}
+Row {data-height=920}
 ------------------------------------
 
 ### Quick info {#about-quickInfo data-width=250}
 
 ```{r}
 
-shared_data <- 
+acoustic_projects_shared <- 
   all_acoustic_projects %>%
     dplyr::group_by(project_code) %>%
     SharedData$new()
 
 crosstalk::filter_select(id = "current_acoustic_project", 
-                         label = "Choose an acoustic project", shared_data, ~project_code, multiple = TRUE)
+                         label = "Choose an acoustic project", acoustic_projects_shared, ~project_code, multiple = TRUE)
 
-# filter_select(
-#   "daily_time_series_carrier",
-#   "Choose carrier",
-#   shared_data,
-#   ~carrier,
-#   multiple = TRUE
-# )
 ```
 
+<!-- doesnt work yet -->
 ```{js}
-setDefaultValue("current_acoustic_project", "bpns");
+setDefaultValue("current_acoustic_project", "bpns"); 
 ```
 
 
@@ -383,6 +395,24 @@ It helps to:
 
 
 ```{r receivermap, out.width="100%", fig.align = 'center', echo=FALSE}
+
+# SHARED DATA (crosstalk R package)
+# shared_data %>%
+#   plot_ly(type = "scatter", x = ~month_name, y = ~n,
+#           color = ~carrier, name = ~carrier,
+#           mode = "markers+lines", colors = unname(pals::glasbey())
+#   ) %>%
+#   layout(
+#     yaxis = list(title = "", fixedrange = TRUE),
+#     xaxis = list(title = "Flights", rangeslider = list(type = "date"))
+#   )
+
+current_deployments <- 
+  current_deployments %>%
+    dplyr::filter(acoustic_project_code %in% acoustic_projects_shared$project_code)
+
+
+
 
 # ICONS
 
@@ -468,13 +498,13 @@ Row {data-height=200}
 
 ```{r}
 #THIS IS WHERE I STOPPED NOV 17
-shared_data <- 
-  all_deployments %>%
-    dplyr::group_by(project_code) %>%
-    SharedData$new()
-
-crosstalk::filter_select(id = "current_acoustic_project", 
-                         label = "Choose an acoustic project", shared_data, ~project_code, multiple = TRUE)
+# shared_data <- 
+#   all_acoustic_projects %>%
+#     dplyr::group_by(project_code) %>%
+#     SharedData$new()
+# 
+# crosstalk::filter_select(id = "current_acoustic_project", 
+#                          label = "Choose an acoustic project", shared_data, ~project_code, multiple = TRUE)
 
 # filter_select(
 #   "daily_time_series_carrier",
@@ -500,6 +530,8 @@ setDefaultValue("current_acoustic_project", "bpns");
 
 
 ### Deployments that need manual check {#deploymentsQC-vBox}
+
+<!-- todo: hrefs to tables -->
 
 ```{r}
 flexdashboard::valueBox(num_receivers_manualcheck,
@@ -652,7 +684,7 @@ DT::datatable(current_deployments_3 %>%
 
 <!-- > To aid with manual data entry in the ETN portal, information on the previous deployment is given: Deployment and recover dates, the battery installation and estimated end dates. -->
 
-# 2. Plan Receiver Maintenance {#table-receiverInfo}
+# 3. Plan Receiver Maintenance {#table-receiverInfo}
 
 ### Information on currently active deployments with receiver battery status
 <!-- This table shows the battery status of each acoustic receiver currently deployed -->
