@@ -1,5 +1,5 @@
 ---
-title: "elasmobranch detections in ETN"
+title: "Thornback ray data in ETN"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -13,54 +13,157 @@ knitr::opts_chunk$set(echo = F)
 
 library(etn)
 library(dplyr)
+library(ggplot2)
+library(plotly)
 library(mregions2)
 library(utils)
 library(leaflet)
+library(leafem)
 
 con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
 
 ```
 
+For the animals tagged in the North Sea, no information on 'capture_location', 'tagger' is available.
+
 <!-- **Database Query:** -->
 
-```{r map, include=FALSE}
+```{r query, include=FALSE}
 
 
-etn_species <- etn::list_scientific_names()
+# etn_species <- etn::list_scientific_names()
+# 
+# etn_elasmo <- c("Galeorhinus galeus","Lamna nasus", "Prionace glauca", "Raja undulata", "Scyliorhinus canicula", "Torpedo torpedo", "Hexanchus griseus", "Scyliorhinus stellaris",
+#                 "Squalus acanthias", "Cetorhinus maximus", "Raja asterias", "Squatina squatina", "Raja brachyura", "Sphyrna zygaena", "Dalatias licha", "Isurus oxyrinchus", "Mustelus asterias", 
+#                 "Raja clavata", "Rhynchobatus djiddensis", "Carcharhinus albimarginatus", "Dasyatis pastinaca", "Galeocerdo cuvier", "Mustelus sp.", "Raja radula", "Rostroraja alba", "Torpedo marmorata"
+#                 )
 
-etn_elasmo <- c("Galeorhinus galeus","Lamna nasus", "Prionace glauca", "Raja undulata", "Scyliorhinus canicula", "Torpedo torpedo", "Hexanchus griseus", "Scyliorhinus stellaris",
-                "Squalus acanthias", "Cetorhinus maximus", "Raja asterias", "Squatina squatina", "Raja brachyura", "Sphyrna zygaena", "Dalatias licha", "Isurus oxyrinchus", "Mustelus asterias", 
-                "Raja clavata", "Rhynchobatus djiddensis", "Carcharhinus albimarginatus", "Dasyatis pastinaca", "Galeocerdo cuvier", "Mustelus sp.", "Raja radula", "Rostroraja alba", "Torpedo marmorata"
-                )
+# thornback ray only, for Jan 2023-12-08
+etn_elasmo <- "Raja clavata"
 
 detections_elasmo <- etn::get_acoustic_detections(con, scientific_name = etn_elasmo)
+animals_elasmo <- etn::get_animals(con, scientific_name = etn_elasmo) %>%
+  dplyr::mutate(sex = ifelse(sex == "M" | sex == "Male" | sex == "male", "m",
+                             ifelse(sex == "F" | sex =="Female" | sex == "female", "f", sex)))
 
 North_Sea <- mregions2::gaz_search(2350)
 
 det_northsea_elasmo <- detections_elasmo %>%
   dplyr::filter(deploy_latitude %>% between(North_Sea$minLatitude, North_Sea$maxLatitude),
                 deploy_longitude %>% between(North_Sea$minLongitude, North_Sea$maxLongitude),
-                !scientific_name == "Galeocerdo cuvier"
-                )
+                !scientific_name == "Galeocerdo cuvier") %>%
+  dplyr::left_join(animals_elasmo %>% 
+                     dplyr::select(animal_id, sex),
+                   by = join_by(animal_id)) %>%
+  dplyr::mutate(animal_id = animal_id %>% as.character(),
+                cohort = ifelse(date_time < ("2019-06-30" %>% as.POSIXct()), "cohort 2018",
+                                             ifelse(date_time > ("2020-08-15" %>% as.POSIXct()), "cohort 2020", "cohort 2019")))
 
-det_northsea_elasmo$scientific_name %>% unique()
+# det_northsea_elasmo$scientific_name %>% unique()
 
 det_summary_northsea_elasmo <- det_northsea_elasmo %>%
+  dplyr::group_by(scientific_name, station_name, cohort) %>%
+  dplyr::summarise(n_detections = dplyr::n(),
+                   n_individuals = animal_id %>% unique() %>% length(),
+                   # n_male = animal_id %>% where(sex == "m") %>% length,
+                   first_detection = date_time %>% min(),
+                   last_detection = date_time %>% max(),
+                   deploy_latitude = deploy_latitude %>% mean(na.rm = T),
+                   deploy_longitude = deploy_longitude %>% mean(na.rm = T))
+
+det_summary_northsea_elasmo_all <- det_northsea_elasmo %>%
   dplyr::group_by(scientific_name, station_name) %>%
   dplyr::summarise(n_detections = dplyr::n(),
+                   n_individuals = animal_id %>% unique() %>% length(),
+                   # n_male = animal_id %>% where(sex == "m") %>% length,
                    first_detection = date_time %>% min(),
                    last_detection = date_time %>% max(),
                    deploy_latitude = deploy_latitude %>% mean(na.rm = T),
                    deploy_longitude = deploy_longitude %>% mean(na.rm = T))
 
 
-m <- leaflet() %>%
-  addTiles() %>%
-  addCircleMarkers(data = det_summary_northsea_elasmo,
-                   lat = ~deploy_latitude,
-                   lng = ~deploy_longitude,
-                   radius = ~log(n_detections),
-                   label = ~paste0(scientific_name, ", n_detect = ", n_detections))
-m
  
 ```
+
+### Abacus plot
+
+```{r abacus, include=T}
+p <- ggplot(data = det_northsea_elasmo) +
+  geom_point(aes(x = date_time, y = animal_id, colour = sex)) +
+  theme_minimal()
+
+p %>% plotly::ggplotly()
+
+```
+
+
+### Map
+```{r map, include=T}
+
+## North Arrow
+north.arrow.icon <-
+  "<img src='https://www.clipartbest.com/cliparts/yTo/Lgr/yToLgryGc.png' style='width:40px;height:50px;'>"
+
+
+# pal <- leaflet::colorFactor(palette = c("red", "blue"), domain = c("m", "f"))
+
+m <- leaflet() %>%
+  addTiles() %>%
+  # addPolygons(data = North_Sea) %>%
+  # cohort 2018
+  addCircleMarkers(data = det_summary_northsea_elasmo %>% dplyr::filter(cohort == "cohort 2018"),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   # color = ~pal(sex),
+                   radius = ~log(n_detections)*2,
+                   label = ~paste0(station_name),
+                   popup = ~paste0("<b>", n_individuals ,"</b> individuals<br>", 
+                                   "<b>", n_detections ,"</b> detections<br>"),
+                   group = "cohort 2018") %>%
+    # cohort 2019
+  addCircleMarkers(data = det_summary_northsea_elasmo %>% dplyr::filter(cohort == "cohort 2019"),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = ~log(n_detections)*2,
+                   label = ~paste0(station_name),
+                   popup = ~paste0("<b>", n_individuals ,"</b> individuals<br>", 
+                                   "<b>", n_detections ,"</b> detections<br>"),
+                   group = "cohort 2019") %>%
+    # cohort 2020
+  addCircleMarkers(data = det_summary_northsea_elasmo %>% dplyr::filter(cohort == "cohort 2020"),
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = ~log(n_detections)*2,
+                   label = ~paste0(station_name),
+                   popup = ~paste0("<b>", n_individuals ,"</b> individuals<br>", 
+                                   "<b>", n_detections ,"</b> detections<br>"),
+                   group = "cohort 2020") %>%
+    # all
+  addCircleMarkers(data = det_summary_northsea_elasmo_all,
+                   lat = ~deploy_latitude,
+                   lng = ~deploy_longitude,
+                   radius = ~log(n_detections)*2,
+                   label = ~paste0(station_name),
+                   popup = ~paste0("<b>", n_individuals ,"</b> individuals<br>",
+                                   "<b>", n_detections ,"</b> detections<br>"),
+                   group = "all cohorts") %>%
+  #extras
+  leafem::addMouseCoordinates() %>%
+  leaflet::addScaleBar(position = "topright",
+              options = scaleBarOptions(
+              maxWidth = 150,
+              imperial = FALSE)) %>%
+  # leaflet::addControl( html = north.arrow.icon,
+  #             position = "topleft",
+  #             className = "fieldset {border: 0;}") %>%
+  # leafem::addHomeButton(group = "zoom to data",
+  #                       position = "topleft") %>%
+  addLayersControl(position = "topright" ,
+                   # baseGroups = c("EMODnet bathymetry", "satellite", "OpenStreetMap"),
+                   overlayGroups = c("cohort 2018", "cohort 2019", "cohort 2020", "all cohorts"), 
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  hideGroup(c("cohort 2018", "cohort 2019", "cohort 2020"))
+m
+```
+
+> the radius of the circle corresponds to the number of detections.
