@@ -24,12 +24,10 @@ library(knitr)
 
 # data wrangling
 library(readr)
-library(tidyverse)
 library(lubridate)
 library(dplyr)
 library(lubridate)
 library(utils)
-library(tidyverse)
 library(forcats)
 
 # maps
@@ -50,36 +48,37 @@ con <- etn::connect_to_etn(Sys.getenv("userid"), Sys.getenv("pwd"))
 
 ```{r database query, include=FALSE, echo=FALSE}
 
-species_name <- "Squalus acanthias"
+# species_name <- "Squalus acanthias"
+species_name <- "Thunnus thynnus"
 
-# get all animals with the species name 'squalus acanthias'
+# get all animals with the species name
 # GIVES EMPTY DF
-# animals <- etn::get_animals(con, scientific_name = species_name)
+animals <- etn::get_animals(con, scientific_name = species_name)
 
-# ANIMALS
-path_animals <- paste0(getwd(), "/data/Squalus_acanthias_animals.csv")
-animals <- utils::read.table(file = path_animals, 
-                            header = T,
-                            sep = ",")
-relevant_columns_animals <- c("tag", "catchedDateTime", "idPk", "utcReleaseDateTime", "scientificName", "releaseLatitude", "releaseLongitude", "sex")
+# # ANIMALS
+# path_animals <- paste0(getwd(), "/data/Squalus_acanthias_animals.csv")
+# animals <- utils::read.table(file = path_animals, 
+#                             header = T,
+#                             sep = ",")
+# relevant_columns_animals <- c("tag", "catchedDateTime", "idPk", "utcReleaseDateTime", "scientificName", "releaseLatitude", "releaseLongitude", "sex")
 
 # TAGGING LOCATIONS
-tagging_locations <- animals %>% 
-    dplyr::mutate(releaseLatLon = paste0(releaseLatitude, ", ", releaseLongitude)) %>% 
-    group_by(releaseLatLon) %>%
-    summarise(releaseLatitude = mean(releaseLatitude),
-              releaseLongitude = mean(releaseLongitude)) %>%
-  dplyr::select(-releaseLatLon) %>%
-  dplyr::arrange(releaseLatitude) %>%
-  dplyr::mutate(tagging_location = c("1_start_LochEtive", "2_mid_LochEtive", "3_end_LochEtive")) #Name tagging locations
+# tagging_locations <- animals %>% 
+#     dplyr::mutate(releaseLatLon = paste0(releaseLatitude, ", ", releaseLongitude)) %>% 
+#     group_by(releaseLatLon) %>%
+#     summarise(releaseLatitude = mean(releaseLatitude),
+#               releaseLongitude = mean(releaseLongitude)) %>%
+#   dplyr::select(-releaseLatLon) %>%
+#   dplyr::arrange(releaseLatitude) %>%
+  # dplyr::mutate(tagging_location = c("1_start_LochEtive", "2_mid_LochEtive", "3_end_LochEtive")) #Name tagging locations
 
 # add tagging location names to animals
-animals <- animals %>%
-  dplyr::left_join(tagging_locations %>% dplyr::select(releaseLatitude, tagging_location), by = join_by(releaseLatitude))
+# animals <- animals %>%
+#   dplyr::left_join(tagging_locations %>% dplyr::select(releaseLatitude, tagging_location), by = join_by(releaseLatitude))
 
-tagging_locations <- tagging_locations %>%
-  dplyr::left_join(animals %>% group_by(tagging_location) %>% summarise(ind_tagged = n()),
-                   by = join_by(tagging_location))
+# tagging_locations <- tagging_locations %>%
+#   dplyr::left_join(animals %>% group_by(tagging_location) %>% summarise(ind_tagged = n()),
+#                    by = join_by(tagging_location))
 
 
 # DETECTIONS
@@ -223,20 +222,20 @@ leaflet() %>%
                    group = "receiver stations"
                    ) %>%
   
-#data: tagging locations
-  addAwesomeMarkers(data = tagging_locations,
-                   icon = icon_tag,
-                   clusterOptions = markerClusterOptions(), #showCoverageOnHover = T, zoomToBoundsOnClick = T, 
-                   lat = ~releaseLatitude,
-                   lng = ~releaseLongitude,
-                   # radius = 5,
-                   # fillOpacity = 0.7,
-                   # fillColor = "yellow",
-                   # opacity = 0,
-                   label = ~paste0("name: ", tagging_location),
-                   popup = ~paste0("lat: ", releaseLatitude, ", lon: ", releaseLongitude, ", #sharks tagged: ", ind_tagged),
-                   group = "tagging locations"
-                   ) %>%
+# #data: tagging locations
+#   addAwesomeMarkers(data = tagging_locations,
+#                    icon = icon_tag,
+#                    clusterOptions = markerClusterOptions(), #showCoverageOnHover = T, zoomToBoundsOnClick = T, 
+#                    lat = ~releaseLatitude,
+#                    lng = ~releaseLongitude,
+#                    # radius = 5,
+#                    # fillOpacity = 0.7,
+#                    # fillColor = "yellow",
+#                    # opacity = 0,
+#                    label = ~paste0("name: ", tagging_location),
+#                    popup = ~paste0("lat: ", releaseLatitude, ", lon: ", releaseLongitude, ", #sharks tagged: ", ind_tagged),
+#                    group = "tagging locations"
+#                    ) %>%
 
 # add-ons
 leaflet.extras::addFullscreenControl() %>%
@@ -249,9 +248,9 @@ leaflet.extras::addFullscreenControl() %>%
 # layers control
   addLayersControl(position = "topright" ,
                    baseGroups = c("EMODnet bathymetry", "satellite", "OpenStreetMap"),
-                   overlayGroups = c("receiver stations", "tagging locations"),
+                   overlayGroups = c("receiver stations"), #, "tagging locations"
                    options = layersControlOptions(collapsed = FALSE)) %>%
-  hideGroup("tagging locations") %>%
+  # hideGroup("tagging locations") %>%
   
 # legend
   addLegend(position = "bottomleft",
@@ -318,7 +317,7 @@ Row {data-height=1000}
 ```{r table}
 
 DT::datatable(animals %>%
-                dplyr::select(idPk, catchedDateTime, tagging_location, utcReleaseDateTime, sex, tag, releaseLatitude, releaseLongitude),
+                dplyr::select(idPk, catchedDateTime, utcReleaseDateTime, sex, tag, releaseLatitude, releaseLongitude), #tagging_location,
               rownames = F,
               filter = 'bottom',
               extension = 'Buttons',options = list(
@@ -406,20 +405,20 @@ leaflet() %>%
                    group = "receiver stations"
                    ) %>%
   
-#data: tagging locations
-  addAwesomeMarkers(data = tagging_locations,
-                   icon = icon_tag,
-                   clusterOptions = markerClusterOptions(), #showCoverageOnHover = T, zoomToBoundsOnClick = T, 
-                   lat = ~releaseLatitude,
-                   lng = ~releaseLongitude,
-                   # radius = 5,
-                   # fillOpacity = 0.7,
-                   # fillColor = "yellow",
-                   # opacity = 0,
-                   label = ~paste0("name: ", tagging_location),
-                   popup = ~paste0("lat: ", releaseLatitude, ", lon: ", releaseLongitude, ", #sharks tagged: ", ind_tagged),
-                   group = "tagging locations"
-                   ) %>%
+# #data: tagging locations
+#   addAwesomeMarkers(data = tagging_locations,
+#                    icon = icon_tag,
+#                    clusterOptions = markerClusterOptions(), #showCoverageOnHover = T, zoomToBoundsOnClick = T, 
+#                    lat = ~releaseLatitude,
+#                    lng = ~releaseLongitude,
+#                    # radius = 5,
+#                    # fillOpacity = 0.7,
+#                    # fillColor = "yellow",
+#                    # opacity = 0,
+#                    label = ~paste0("name: ", tagging_location),
+#                    popup = ~paste0("lat: ", releaseLatitude, ", lon: ", releaseLongitude, ", #sharks tagged: ", ind_tagged),
+#                    group = "tagging locations"
+#                    ) %>%
 
 # add-ons
 leaflet.extras::addFullscreenControl() %>%
@@ -432,9 +431,9 @@ leaflet.extras::addFullscreenControl() %>%
 # layers control
   addLayersControl(position = "topright" ,
                    baseGroups = c("EMODnet bathymetry", "satellite", "OpenStreetMap"),
-                   overlayGroups = c("receiver stations", "tagging locations"),
+                   overlayGroups = c("receiver stations"), #, "tagging locations"
                    options = layersControlOptions(collapsed = FALSE)) %>%
-  hideGroup("tagging locations") #%>%
+  # hideGroup("tagging locations") #%>%
 #   
 # # legend
 #   addLegend(position = "bottomleft",

@@ -69,10 +69,10 @@ BPNS <- mregions2::gaz_search(3293) %>% mregions2::gaz_geometry()
 <!-- **Database Query:** -->
 
 ```{r get deployments, include=FALSE}
-
-all_deployments <- etn::get_acoustic_deployments(open_only = F)
-all_receivers <- etn::get_acoustic_receivers()
-all_acoustic_projects <- etn::get_acoustic_projects()
+# FROM CROSSTALK PACKAGE
+# all_deployments <- etn::get_acoustic_deployments(open_only = F)
+# all_receivers <- etn::get_acoustic_receivers()
+# all_acoustic_projects <- etn::get_acoustic_projects()
 
 # get currently active deployments
 current_deployments <- etn::get_acoustic_deployments(con, 
@@ -151,31 +151,6 @@ current_deployments <-
                   ) #change all date formats to show only year-month-day
 
 
-
-# --------------------OLD----------------------------
-# algorithm to clean data
-
-# # bug right now: POSIXt format is lost during 1st and 2nd check
-# current_deployments_clean <- current_deployments %>%
-#   # first check: is battery start empty, battery end not, and battery end lies in the past? -> set battery end as battery start
-#   dplyr::mutate(battery_installation_date = ifelse(
-#     is.na(battery_installation_date) & !is.na(battery_estimated_end_date) & (battery_estimated_end_date < (Sys.Date())),
-#     battery_installation_date, #battery_estimated_end_date,
-#     battery_installation_date)
-#     ) #%>%
-#   # second check: same as first check, but then set battery end as battery start + 13 months
-#   dplyr::mutate(battery_estimated_end_date = ifelse(
-#     is.na(battery_installation_date) & !is.na(battery_estimated_end_date) & (battery_estimated_end_date < (Sys.Date() %>% as.POSIXct())),
-#     battery_installation_date + months(13),
-#     battery_estimated_end_date)
-#     )
-
-# current_deployments_clean %>% dplyr::select(battery_installation_date) %>% unique()
-# current_deployments_clean %>% dplyr::select(battery_estimated_end_date) %>% unique()
-# current_deployments$battery_installation_date %>% unique()
-
-# ----------------------------------------------------  
-
 # QC ALGORITHM
 
 # this algorithm will split the list of currently active deployments into deployments that 
@@ -239,19 +214,12 @@ current_deployments <- current_deployments %>%
 
 # 1. Overview {#overview}
 
-Row {data-height=80}
+Row {data-height=100}
 ------------------------------------
 
 ### {#etn-logo data-width=150}
 
-<!-- <font size = "5">The European Tracking Network</font><br><br><br> -->
-```{r}
-# htmltools::img(src="https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png")
-
-# include_graphics("https://europeantrackingnetwork.org/sites/europeantrackingnetwork.org/files/managed/logo_ETN.png") # works
-```
-<!-- <a href="https://europeantrackingnetwork.org/en" target=_blank> -->
-<!-- <center> </center></a> -->
+<!-- [![ETN Logo](images/etn_logo.png)](https://external.ink?to=/europeantrackingnetwork.org/en){width=5%} -->
 
 ```{r ETN-logo}
 
@@ -263,8 +231,8 @@ hyperlink_url <- "https://europeantrackingnetwork.org/en"
 
 # Combine image and hyperlink within an HTML block
 html_block <- div(
-  img(src = image_url, style = "width:100%; height:auto;"),
-  a(href = hyperlink_url, target = "_blank", "Visit the website")
+  img(src = image_url, style = "width:90%; height:70%;"),
+  a(href = hyperlink_url, target = "_blank", "ETN website")
 )
 
 # Display the HTML block
@@ -352,27 +320,27 @@ flexdashboard::gauge(value = num_receivers_batterychange,
 ```
 
 
-Row {data-height=920}
+Row {data-height=900}
 ------------------------------------
 
 ### Quick info {#about-quickInfo data-width=250}
 
-```{r}
+<!-- FROM CROSSTALK PACKAGE -->
+<!-- ```{r} -->
 
-acoustic_projects_shared <- 
-  all_acoustic_projects %>%
-    dplyr::group_by(project_code) %>%
-    SharedData$new()
+<!-- acoustic_projects_shared <- -->
+<!--   all_acoustic_projects %>% -->
+<!--     dplyr::group_by(project_code) %>% -->
+<!--     SharedData$new() -->
 
-crosstalk::filter_select(id = "current_acoustic_project", 
-                         label = "Choose an acoustic project", acoustic_projects_shared, ~project_code, multiple = TRUE)
+<!-- crosstalk::filter_select(id = "current_acoustic_project", -->
+<!--                          label = "Choose an acoustic project", acoustic_projects_shared, ~project_code, multiple = TRUE) -->
 
-```
+<!-- ``` -->
 
-<!-- doesnt work yet -->
-```{js}
-setDefaultValue("current_acoustic_project", "bpns"); 
-```
+<!-- ```{js} -->
+<!-- setDefaultValue("current_acoustic_project", "bpns"); -->
+<!-- ``` -->
 
 
 
@@ -406,12 +374,9 @@ It helps to:
 #     yaxis = list(title = "", fixedrange = TRUE),
 #     xaxis = list(title = "Flights", rangeslider = list(type = "date"))
 #   )
-
-current_deployments <- 
-  current_deployments %>%
-    dplyr::filter(acoustic_project_code %in% acoustic_projects_shared$project_code)
-
-
+# current_deployments <- 
+#   current_deployments %>%
+#     dplyr::filter(acoustic_project_code %in% acoustic_projects_shared$project_code)
 
 
 # ICONS
@@ -496,28 +461,28 @@ Row {data-height=200}
 
 ### Filter options {data-width = 200}
 
-```{r}
-#THIS IS WHERE I STOPPED NOV 17
-# shared_data <- 
-#   all_acoustic_projects %>%
-#     dplyr::group_by(project_code) %>%
-#     SharedData$new()
-# 
-# crosstalk::filter_select(id = "current_acoustic_project", 
-#                          label = "Choose an acoustic project", shared_data, ~project_code, multiple = TRUE)
+<!-- ```{r} -->
+<!-- #THIS IS WHERE I STOPPED NOV 17 -->
+<!-- shared_data <- -->
+<!--   all_acoustic_projects %>% -->
+<!--     dplyr::group_by(project_code) %>% -->
+<!--     SharedData$new() -->
 
-# filter_select(
-#   "daily_time_series_carrier",
-#   "Choose carrier",
-#   shared_data,
-#   ~carrier,
-#   multiple = TRUE
-# )
-```
+<!-- crosstalk::filter_select(id = "current_acoustic_project", -->
+<!--                          label = "Choose an acoustic project", shared_data, ~project_code, multiple = TRUE) -->
 
-```{js}
-setDefaultValue("current_acoustic_project", "bpns");
-```
+<!-- filter_select( -->
+<!--   "daily_time_series_carrier", -->
+<!--   "Choose carrier", -->
+<!--   shared_data, -->
+<!--   ~carrier, -->
+<!--   multiple = TRUE -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- ```{js} -->
+<!-- setDefaultValue("current_acoustic_project", "bpns"); -->
+<!-- ``` -->
 
 
 
