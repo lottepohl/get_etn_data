@@ -31,6 +31,7 @@ library(knitr) # for knitting the document into a e.g. .html file
 library(leafem) # for extras in leaflet maps
 library(DT) # for interactive tables
 library(tidyr)
+library(writexl)
 options(DT.options = list(scrollY="200px", #500
 
                           scrollX="200px", #200
@@ -96,49 +97,76 @@ BPNS <- mregions2::gaz_search(3293) %>% mregions2::gaz_geometry()
 ```{r query etn data, include=FALSE}
 
 PBARN_acoustic_projects <- c("ws1", "ws2", "cpodnetwork", "bpns", 'zeeschelde', "bovenschelde")
+# PBARN_acoustic_projects <- c("cpodnetwork", "bpns") #for overview for klaas
 
-detections_2023 <- etn::get_acoustic_detections(con, start_date = "2023-01-01", acoustic_project_code = PBARN_acoustic_projects)
-
-
-colnames(detections_2023)
+detections_2023 <- etn::get_acoustic_detections(con, start_date = "2023-01-01", end_date = "2023-12-31", acoustic_project_code = PBARN_acoustic_projects)
 
 animals_detected <- 
   detections_2023 %>%
     dplyr::select(tag_serial_number) %>% #, acoustic_tag_id, animal_id, animal_project_code
     unique() %>%
     tidyr::drop_na()
-    
-
 
 animals_2023 <- etn::get_animals(con,
                                  tag_serial_number = animals_detected$tag_serial_number)
 
 
-animals_2023 %>% head() %>% View()
-# colnames()
-
 tags_2023 <- 
   etn::get_tags(con,
                 tag_serial_number = animals_detected$tag_serial_number)
 
-tags_2023 %>% colnames() #owner_organization is the column that I need!
+detections_institutes_2023 <- 
+  detections_2023 %>%
+    dplyr::select(detection_id, date_time, tag_serial_number, acoustic_tag_id, animal_project_code, animal_id,
+                  scientific_name, acoustic_project_code, station_name, deploy_latitude, deploy_longitude, deployment_id) %>%
+    dplyr::left_join(animals_2023 %>%
+                       dplyr::select(tag_serial_number, tagger, release_date_time, release_location, release_latitude,
+                                     release_longitude, length1, length1_unit, weight, weight_unit, sex, comments),
+                     by = join_by(tag_serial_number),
+                     relationship = "many-to-many") %>%
+    dplyr::left_join(tags_2023 %>%
+                       dplyr::select(tag_serial_number, owner_organization, owner_pi),
+                     by = join_by(tag_serial_number),
+                     relationship ="many-to-many")
 
+# SUMMARY PER DETECTED SPECIES
 
+dets_inst_summary <- 
+  detections_institutes_2023 %>%
+    dplyr::group_by(scientific_name) %>%
+  dplyr::summarise(n_detections = detection_id %>% unique() %>% length(),
+                   n_individuals = tag_serial_number %>% unique() %>% length(),
+                   n_animal_projects = animal_project_code %>% unique() %>% length(),
+                   n_owner_organizations = owner_organization %>% unique() %>% length(),
+                   n_stations = station_name %>% unique() %>% length(),
+                   animal_projects = paste(animal_project_code %>% unique(), collapse = ", "),
+                   owner_organizations = paste(owner_organization %>% unique(), collapse = ", "),
+                   stations = paste(station_name %>% unique(), collapse = ", "))
 
-#TODO: table with detection_id, date_time, tag_serial_number, acoustic_tag_id, animal_id, station_name, scientific_name, animal_project, owner_organization
+dets_inst_summary %>% View()
+print(dets_inst_summary, n = nrow(dets_inst_summary))
 
+# SUMMARY PER STATION WITH DETECTIONS
 
+stations_inst_summary <- 
+  detections_institutes_2023 %>%
+    dplyr::group_by(station_name) %>%
+  dplyr::summarise(n_detections = detection_id %>% unique() %>% length(),
+                   n_species = scientific_name %>% unique() %>% length(),
+                   n_individuals = tag_serial_number %>% unique() %>% length(),
+                   n_animal_projects = animal_project_code %>% unique() %>% length(),
+                   n_owner_organizations = owner_organization %>% unique() %>% length(),
+                   animal_projects = paste(animal_project_code %>% unique(), collapse = ", "),
+                   owner_organizations = paste(owner_organization %>% unique(), collapse = ", "),
+                   species = paste(scientific_name %>% unique(), collapse = ", "))
 
+stations_inst_summary %>% View()
 
+# MAKE OUTPUT
 
+writexl::write_xlsx(dets_inst_summary, path = paste0(getwd(), "/20240129_PBARN_detections_overview/2021-2023_PBARN_species_institutes_overview.xlsx"))
 
-
-
-
-
-
-
-
+writexl::write_xlsx(stations_inst_summary, path = paste0(getwd(), "/20240129_PBARN_detections_overview/2021-2023_PBARN_stations_institutes_overview.xlsx"))
 
 
 
